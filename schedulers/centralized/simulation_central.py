@@ -11,13 +11,14 @@ from workers.jobworker import *
 
 class Simulation_central(Simulation):
     
-    def __init__(self, simulation_name="", job_split="", num_workers=1, job_types_list=[0], produce_breakdown=False):
+    def __init__(self, simulation_name="", job_split="", num_workers=1, job_types_list=[0], produce_breakdown=False, use_boost=False):
 
         Simulation.__init__(self, simulation_name=simulation_name, job_split=job_split,\
                             centralized_scheduler=True,\
                             total_workers=num_workers,\
                             job_types_list=job_types_list,\
-                            produce_breakdown=produce_breakdown)
+                            produce_breakdown=produce_breakdown,
+                            use_boost=use_boost)
         self.remaining_jobs = TOTAL_NUM_OF_JOBS
         self.event_queue = PriorityQueue()
 
@@ -61,7 +62,7 @@ class Simulation_central(Simulation):
         self.run_finish(last_time, by_job_type=True)
         
 
-    def nav_heft_schedule_job_and_send_tasks(self, job,  current_time):
+    def nav_heft_schedule_job_and_send_tasks(self, job, current_time):
         """ HEFT scheduler to schedule Tasks and send the initial task to worker """
         task_arrival_events = []  # List to store the TaskArrivalEvent to the receiving Workers
 
@@ -71,6 +72,8 @@ class Simulation_central(Simulation):
             job, self.workers, current_time)
         # 2. assign the planned ADFG to job object
         job.assign_ADFG(activation_graph)
+        if self.use_boost:
+            job.assign_priorities(BOOST_PARAMETER)
 
         # 3. send the first task to allocated worker
         initial_task = job.tasks[0]

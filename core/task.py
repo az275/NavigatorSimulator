@@ -1,4 +1,5 @@
 from core.logging import *
+import numpy as np
 
 
 class Task(object):
@@ -17,6 +18,7 @@ class Task(object):
         self.next_task_ids = []                            # list of task ids
         self.assigned_worker_id = None
         self.ADFG = {}                                  # ADFG assigned to the job that this task belongs to
+        self.priority = np.inf
         self.log = TaskLifeCycleTimestamp(
             self.job_id, self.task_id)
 

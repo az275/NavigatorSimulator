@@ -3,10 +3,12 @@ from core.model import *
 from core.task import *
 from core.config import *
 
+import numpy as np
+
 
 class Job(object):
 
-    def __init__(self, create_time, job_type_id, job_id):
+    def __init__(self, create_time, job_type_id, job_id, use_boost=False):
         """
         A job is a unique object across the simulation execution that has a specific graph of task dependencies (job_type_id)
         """
@@ -22,7 +24,7 @@ class Job(object):
         self.completed_tasks = []
         self.create_time = create_time  
         self.end_time = create_time
-
+        self.use_boost = use_boost
 
     def __hash__(self):
         return hash(self.id)
@@ -44,6 +46,40 @@ class Job(object):
                 return task
         return None
 
+    def boost_size(self) -> float:
+        """
+        Compute a boost for the job based on the total processing time needed to
+        traverse its ADFG.
+        """
+        # Compute the dependents for each task, and populate the initial set of
+        # tasks that can be processed (i.e. those with no dependents).
+        dependencies: dict[int, set[int]] = {}
+        dependents: dict[int, set[int]] = {}
+        available_tasks: list[Task] = []
+        for task in self.tasks:
+            dependencies[task.task_id] = set(task.required_task_ids)
+            dependents[task.task_id] = set(task.next_task_ids)
+            if len(task.required_task_ids) == 0:
+                available_tasks.append(task)
+
+        max_cum_processing_time = 0
+        while available_tasks:
+            next_available_tasks = []
+            # TODO: Figure out the right way to compute "processing time" here.
+            # Do we include things like GPU_to_GPU_delay? Does it make sense to
+            # use execution_time from a previous run to start?
+            max_cum_processing_time += max([
+                task.task_exec_duration for task in available_tasks
+            ])
+            for task in available_tasks:
+                for dep in dependents[task.task_id]:
+                    dependencies[dep].remove(task.task_id)
+                    if len(dependencies[dep]) == 0:
+                        next_available_tasks.append(self.get_task_by_id(dep))
+
+            available_tasks = next_available_tasks
+
+        return max_cum_processing_time
 
     def assign_ADFG(self, ADFG):
         """
@@ -94,6 +130,18 @@ class Job(object):
                 self.tasks[current_task_index].required_task_ids.append(prev_idx)
             for next_idx in job_cfg["TASKS"][current_task_index]["NEXT_TASK_INDEX"]:
                 self.tasks[current_task_index].next_task_ids.append(next_idx)
+
+    def assign_priorities(self, boost_parameter: float):
+        """
+        Assign priorities to tasks based on the ADFG
+        """
+        # TODO: Use more flexible priority scheme if needed in future. Default
+        # to boost for now for quick testing.
+        job_size = self.boost_size()
+        for task in self.tasks:
+            task.priority = self.create_time - 1 / boost_parameter * np.log(
+                1 / (1 - np.exp(-boost_parameter * job_size))
+            )
 
     def finished_task(self, task):
         for f_task in self.completed_tasks:

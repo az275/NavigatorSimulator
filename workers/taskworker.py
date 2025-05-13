@@ -68,7 +68,11 @@ class TaskWorker(Worker):
         task_list = self.get_queue_history(current_time, info_staleness=0)
         # print(task_list)
         queued_tasks = queue.Queue()
-        [queued_tasks.put(task) for task in task_list]
+        if self.simulation.use_boost:
+            sorted_task_list = sorted(task_list, key=lambda x: x.priority)
+            [queued_tasks.put(task) for task in sorted_task_list]
+        else:
+            [queued_tasks.put(task) for task in task_list]
         while (not queued_tasks.empty()) and self.num_free_slots > 0:
             task = queued_tasks.get()
             if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
