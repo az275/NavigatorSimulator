@@ -32,6 +32,8 @@ if __name__ == "__main__":
             experiment_schedulers.append("decentralheft")
         elif arg == "hashtask":
             experiment_schedulers.append("hashtask")
+        elif arg == "boostcentralheft":
+            experiment_schedulers.append("boostcentralheft")
 
     OUTPUT_FILE_NAMES = {}
     # 1. create folder to store the experimentation data
@@ -48,12 +50,25 @@ if __name__ == "__main__":
     # 2. Run and collect data
     if "centralheft" in experiment_schedulers:
         sim = Simulation_central(simulation_name="centralheft", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list)
+                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list,
+                                    produce_breakdown=True)
         sim.run()
 
         # result_to_export = sim.result_to_export
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "loadDelay_" + str(
+            LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+
+    if "boostcentralheft" in experiment_schedulers:
+        sim = Simulation_central(simulation_name="centralheft", job_split="PER_TASK",
+                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list,
+                                    produce_breakdown=True,
+                                    use_boost=True)
+        sim.run()
+
+        # result_to_export = sim.result_to_export
+        tasks_logging_times = sim.tasks_logging_times
+        tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
 
     if "hashtask" in experiment_schedulers:
