@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 from functools import reduce
 
 
-def plot_response_time_vs_arrival_time(job_df):
+def plot_response_time_vs_arrival_time(job_df, out_path):
+    plt.figure(figsize=(10, 6))
+
     job_types = set(job_df["workflow_type"])
 
     fst_job_create_time = job_df["job_create_time"][0]
@@ -23,14 +25,13 @@ def plot_response_time_vs_arrival_time(job_df):
     
     plt.xlabel("Job arrival time")
     plt.ylabel("Response time")
-    plt.title("Response times over time by job type")
+    plt.title("Response Time vs. Arrival Time by Job Type")
 
     plt.legend()
+    plt.savefig(os.path.join(out_path, "response_vs_arrival.png"))
 
-    plt.show()
 
-
-def gen_per_task_stats(task_df):
+def gen_per_task_stats(task_df, out_path):
     job_types = set(task_df["workflow_type"])
     task_types_per_job = list(map(
         lambda jt: set(task_df[task_df["workflow_type"] == jt]["task_id"]),
@@ -76,5 +77,5 @@ os.makedirs(out_path, exist_ok=True)
 job_df = pd.read_csv(os.path.join(results_dir_path, "job_breakdown.csv"))
 task_df = pd.read_csv(os.path.join(results_dir_path, "loadDelay_1_placementDelay_1.csv"))
 
-plot_response_time_vs_arrival_time(job_df)
-gen_per_task_stats(task_df)
+plot_response_time_vs_arrival_time(job_df, out_path)
+gen_per_task_stats(task_df, out_path)
