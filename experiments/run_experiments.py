@@ -54,7 +54,9 @@ if __name__ == "__main__":
                                     produce_breakdown=True)
         sim.run()
 
-        # result_to_export = sim.result_to_export
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "job_breakdown.csv")
+
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
@@ -66,7 +68,9 @@ if __name__ == "__main__":
                                     use_boost=True)
         sim.run()
 
-        # result_to_export = sim.result_to_export
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "job_breakdown.csv")
+
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
@@ -92,9 +96,9 @@ if __name__ == "__main__":
                                     produce_breakdown=True)
         sim.run()
         
-        # dataframe = sim.result_to_export
-        # dataframe.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "loadDelay_" + str(
-        #     LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "job_breakdown.csv")
+
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")

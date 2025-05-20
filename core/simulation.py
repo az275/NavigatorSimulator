@@ -3,7 +3,7 @@ This simulation experiment framework of event generation
 is referenced from Sparrow: https://github.com/radlab/sparrow 
 '''
 
-import imp
+import importlib
 import numpy as np
 from matplotlib import pyplot as plt
 from core.config import *
@@ -106,8 +106,8 @@ class Simulation(object):
     def produce_time_breakdown_results(self, completed_jobs):
 
         dataframe = pd.DataFrame(columns=["job_id", "load_info_staleness", "placement_info_staleness", "req_inter_arrival_delay",
-                                          "workflow_type", "scheduler_type", "slowdown", "response_time"])
-        dataframe_tasks_log = pd.DataFrame(columns=["workflow_type", "task_id", "time_to_buffer", "dependency_wait_time",
+                                          "workflow_type", "job_create_time", "scheduler_type", "slowdown", "response_time"])
+        dataframe_tasks_log = pd.DataFrame(columns=["workflow_type", "task_id", "task_arrival_time", "task_start_exec_time", "time_to_buffer", "dependency_wait_time",
                                                     "time_spent_in_queue", "model_fetching_time", "execution_time"])
 
         for index, completed_job in enumerate(completed_jobs):
@@ -122,7 +122,7 @@ class Simulation(object):
             if "JOB_CREATION_INTERVAL" in WORKFLOW_LIST[completed_job.job_type_id]:
                 job_creation_interval = WORKFLOW_LIST[completed_job.job_type_id]["JOB_CREATION_INTERVAL"]
             dataframe.loc[index] = [index, LOAD_INFORMATION_STALENESS, PLACEMENT_INFORMATION_STALENESS, job_creation_interval, completed_job.job_type_id,
-                                    self.simulation_name, slowdown, response_time]
+                                    completed_job.create_time, self.simulation_name, slowdown, response_time]
 
         task_index = 0
         for job in completed_jobs:
@@ -143,8 +143,9 @@ class Simulation(object):
                 assert model_fetching_time >= 0
                 assert execution_time >= 0
 
-                dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, time_to_buffer,
-                                                       dependency_wait_time, time_spent_in_queue, model_fetching_time, execution_time]
+                dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, task.log.task_arrival_at_worker_buffer_timestamp, 
+                                                       task.log.task_execution_start_timestamp,time_to_buffer, dependency_wait_time, 
+                                                       time_spent_in_queue, model_fetching_time, execution_time]
                 task_index += 1
 
         self.tasks_logging_times = dataframe_tasks_log
