@@ -17,7 +17,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 561,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [561, 561, 561, 561, 561]
                 },
                {"MODEL_NAME": "marian",
                 "MODEL_ID": 1,
@@ -30,7 +31,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 441,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [441, 441, 441, 441, 441]
                 },
                {"MODEL_NAME": "mt5",
                 "MODEL_ID": 2,
@@ -43,7 +45,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 778,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [778, 778, 778, 778, 778]
                 },
                 {"MODEL_NAME": "mt5",
                 "MODEL_ID": 2,
@@ -56,7 +59,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 803,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [803, 803, 803, 803, 803]
                 },
                 {"MODEL_NAME": "",
                 "MODEL_ID": -1,
@@ -69,7 +73,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 1,         # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1]
                 },
                ]
      },
@@ -89,7 +94,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 560,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [560, 560, 560, 560, 560]
                 },
                {"MODEL_NAME": "NLI",
                 "MODEL_ID": 3,
@@ -102,7 +108,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 27,        # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [27, 27, 27, 27, 27]
                 }
                ]
      },
@@ -121,7 +128,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 283,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [283, 283, 283, 283, 283]
                 },
                {"MODEL_NAME": "NLI",
                 "MODEL_ID": 3,
@@ -134,7 +142,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 26,        # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [26, 26, 26, 26, 26]
                 },
                {"MODEL_NAME": "txt2speech",
                 "MODEL_ID": 5,
@@ -147,7 +156,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 76,        # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [76, 76, 76, 76, 76]
                 },
                 {"MODEL_NAME": "aggregate",
                 "MODEL_ID": -1,
@@ -160,7 +170,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 0.2,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [0.2, 0.2, 0.2, 0.2, 0.2]
                 }
                ]
      },
@@ -179,7 +190,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 0.6,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [0.6, 0.6, 0.6, 0.6, 0.6]
                 },
                {"MODEL_NAME": "DETR",
                 "MODEL_ID": 8,
@@ -192,7 +204,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 178,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [178, 178, 178, 178, 178]
                 },
                {"MODEL_NAME": "Depth",
                 "MODEL_ID": 9,
@@ -205,7 +218,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 147,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [147, 147, 147, 147, 147]
                 },
                 {"MODEL_NAME": "Aggregate",
                 "MODEL_ID": -1,
@@ -218,7 +232,8 @@ WORKFLOW_LIST = [
                 "EXECUTION_TIME": 104,       # in ms
                 "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 5000,       # ms
-                "SLOWDOWN_FACTOR": 1.2       # batch execution time
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [104, 104, 104, 104, 104]
                 }
                ]
      },

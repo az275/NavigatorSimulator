@@ -87,7 +87,8 @@ class Job(object):
                                 task_cfg["OUTPUT_SIZE"],
                                 task_cfg["MAX_BATCH_SIZE"],
                                 task_cfg["MAX_WAIT_TIME"],
-                                task_cfg["SLOWDOWN_FACTOR"])
+                                task_cfg["BATCH_SIZES"],
+                                task_cfg["BATCH_EXEC_TIME"])
 
             self.tasks.append(current_task)
 

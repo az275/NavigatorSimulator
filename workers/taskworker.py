@@ -63,6 +63,8 @@ class TaskWorker(Worker):
 
     #  ---------------------------  TASK EXECUTION  ----------------------
 
+    # new event for modeling max_wait_time
+    # wake up thread in intervals of no more than max_wait_time
     def maybe_start_task(self, current_time):
         task_end_events = []
         task_list = self.get_queue_history(current_time, info_staleness=0)
@@ -75,9 +77,7 @@ class TaskWorker(Worker):
                 # if self.worker_id == 2:
                 #     print("time{}, exec_task {}. job_start_time: {}, job_type: {} ".format(current_time, task, self.simulation.jobs[task.job_id].create_time, self.simulation.jobs[task.job_id].job_type_id))
 
-                # execute batch subject to the following constraints:
-                # batch cannot exceed max_batch_size
-                # a task cannot wait longer than max_wait_time
+                # form and execute batch
                 task_end_events, task_end_time = self.task_execute(
                     task, current_time)
                 self.rm_task_in_queue_history(task, current_time)
