@@ -3,7 +3,6 @@ This simulation experiment framework of event generation
 is referenced from Sparrow: https://github.com/radlab/sparrow 
 '''
 
-import imp
 import numpy as np
 from matplotlib import pyplot as plt
 from core.config import *

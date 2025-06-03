@@ -74,12 +74,19 @@ class TaskWorker(Worker):
             if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
                 # if self.worker_id == 2:
                 #     print("time{}, exec_task {}. job_start_time: {}, job_type: {} ".format(current_time, task, self.simulation.jobs[task.job_id].create_time, self.simulation.jobs[task.job_id].job_type_id))
+
+                # execute batch subject to the following constraints:
+                # batch cannot exceed max_batch_size
+                # a task cannot wait longer than max_wait_time
                 task_end_events, task_end_time = self.task_execute(
                     task, current_time)
                 self.rm_task_in_queue_history(task, current_time)
                 break
         return task_end_events
 
+    # modify to handle a batch of tasks:
+    # need to model batch execution duration
+    # transfer to next step should handle a list of tasks
     def task_execute(self, task, current_time):
         self.involved = True
         self.num_free_slots -= 1

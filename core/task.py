@@ -2,7 +2,7 @@ from core.logging import *
 
 
 class Task(object):
-    def __init__(self, job_id, task_id, task_exec_duration, required_model, input_size, result_size):
+    def __init__(self, job_id, task_id, task_exec_duration, required_model, input_size, result_size, max_batch_size, max_wait_time, slowdown_factor):
         self.job_id = job_id                           # id of the job the task belongs to
         self.task_id = task_id                         # id of the task itself
         # the time it takes to execute the task
@@ -12,6 +12,9 @@ class Task(object):
         # task input size to model. 
         self.input_size = input_size
         self.result_size = result_size                 # output size
+        self.max_batch_size = max_batch_size
+        self.max_wait_time = max_wait_time
+        self.slowdown_factor = slowdown_factor
         # list of Tasks (inputs) that this task requires ( list will be appended as the job generated)
         self.required_task_ids = []                        # list of task ids
         self.next_task_ids = []                            # list of task ids
