@@ -200,6 +200,30 @@ class JobEndEvent(Event):
         return "[Job End] ==="
 
 
+class WorkerWakeUpEvent(Event):
+    """
+    Event to signify that max_wait_time has passed and worker should
+    check task queue.
+    """
+
+    # TODO: Get max wait time
+    MAX_WAIT_TIME = 50 # ms
+
+    def __init__(self, worker):
+        self.worker = worker
+
+    def run(self, current_time):
+        if self.will_run(current_time):
+            return self.worker.maybe_start_task(current_time)
+        return []
+
+    def to_string(self):
+        return f"[Worker (id: {self.worker.worker_id}) Wake Up]"
+    
+    def will_run(self, current_time):
+        return (self.worker.last_batch_end_time + self.MAX_WAIT_TIME) == current_time
+
+
 class EventOrders:
     """
     Used so that the Simulation keeps track of the priority queue order
