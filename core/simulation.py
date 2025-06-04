@@ -43,6 +43,8 @@ class Simulation(object):
         # Tracking measurements
         self.result_to_export = pd.DataFrame()
         self.tasks_logging_times = pd.DataFrame()
+        self.event_log = pd.DataFrame(columns=["time", "event"])
+
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
 
