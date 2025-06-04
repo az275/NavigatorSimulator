@@ -4,6 +4,7 @@ from workers.worker import *
 from core.network import *
 from core.events import *
 from schedulers.algo.nav_heft_algo import *
+import time
 
 
 class TaskWorker(Worker):
@@ -14,6 +15,7 @@ class TaskWorker(Worker):
         # keep track of the queue information at time:  [ (time1,[task0,task1,]), (time2,[task1,...]),...]
         self.queue_history = []
         self.involved = False
+        self.last_batch_end_time = None
 
     def add_task(self, current_time, task):
         """
@@ -66,6 +68,8 @@ class TaskWorker(Worker):
     # new event for modeling max_wait_time
     # wake up thread in intervals of no more than max_wait_time
     def maybe_start_task(self, current_time):
+        latest_time = current_time
+
         task_end_events = []
         task_list = self.get_queue_history(current_time, info_staleness=0)
         # print(task_list)
@@ -80,8 +84,20 @@ class TaskWorker(Worker):
                 # form and execute batch
                 task_end_events, task_end_time = self.task_execute(
                     task, current_time)
+                latest_time = max(latest_time, task_end_time) # update worker time for wake up
                 self.rm_task_in_queue_history(task, current_time)
                 break
+
+        self.last_batch_end_time = latest_time
+
+        # print(current_time)
+        self.simulation.event_queue.put(
+            EventOrders(
+                latest_time + WorkerWakeUpEvent.MAX_WAIT_TIME,
+                WorkerWakeUpEvent(self)
+            )
+        )
+
         return task_end_events
 
     # modify to handle a batch of tasks:
@@ -103,6 +119,9 @@ class TaskWorker(Worker):
         task.log.task_front_queue_timestamp = current_time
         task.log.task_execution_start_timestamp = current_time + model_fetch_time
         task.log.task_execution_end_timestamp = task_end_time
+
+        # print(f"curr: {current_time}, end: {task_end_time}")
+
         return task_end_events, task_end_time
 
     #  ---------------------------  Subsequent TASK Transfer   --------------------
