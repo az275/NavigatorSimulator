@@ -228,22 +228,18 @@ class WorkerWakeUpEvent(Event):
         self.task_max_wait_time = task_max_wait_time
 
     def run(self, current_time):
-        # print(f"RUN: {self.will_run(current_time)}")
-        # if not self.will_run(current_time):
-        #     print(self.worker.last_queue_check_times)
-        #     print(f"EXPECT: {self.worker.last_queue_check_times[self.task_id] + self.task_max_wait_time}; ONLY AT {current_time}")
-
-        # if self.will_run(current_time):
-        _, task_end_events = self.worker.maybe_start_task_for_type(
-            current_time, self.task_id, self.task_max_wait_time, True
-        )
-        return task_end_events
-        # return []
+        if self.will_run(current_time):
+            _, task_end_events = self.worker.maybe_start_task_for_type(
+                current_time, self.task_id, self.task_max_wait_time, True
+            )
+            return task_end_events
+        return []
 
     def to_string(self):
         return f"[Worker (id: {self.worker.worker_id}) Wake Up (task id: {self.task_id})]"
     
     def will_run(self, current_time):
+        # skip current wake up if a later wake up has been scheduled
         if self.task_id in self.worker.next_check_times:
             return current_time >= self.worker.next_check_times[self.task_id]
         return True # if no batch has been run yet, wake up should be executed
