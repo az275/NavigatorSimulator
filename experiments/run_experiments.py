@@ -57,6 +57,10 @@ if __name__ == "__main__":
         result_to_export = sim.result_to_export
         result_to_export.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "job_breakdown.csv")
 
+        event_log = sim.event_log
+        event_log.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "events_by_time.csv")
+
+        # result_to_export = sim.result_to_export
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
@@ -78,8 +82,12 @@ if __name__ == "__main__":
     if "hashtask" in experiment_schedulers:
         OUTPUT_FILENAME = "hashtask"
         sim = Simulation_central(simulation_name="hashtask", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list)
+                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list,
+                                    produce_breakdown=True)
         sim.run()
+
+        event_log = sim.event_log
+        event_log.to_csv(OUTPUT_FILE_NAMES["hashtask"] + "events_by_time.csv")
         
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["hashtask"] + "loadDelay_" + str(
@@ -99,6 +107,9 @@ if __name__ == "__main__":
         result_to_export = sim.result_to_export
         result_to_export.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "job_breakdown.csv")
 
+        event_log = sim.event_log
+        event_log.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "events_by_time.csv")
+        
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")

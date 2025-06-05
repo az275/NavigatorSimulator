@@ -3,7 +3,6 @@ This simulation experiment framework of event generation
 is referenced from Sparrow: https://github.com/radlab/sparrow 
 '''
 
-import importlib
 import numpy as np
 from matplotlib import pyplot as plt
 from core.config import *
@@ -46,6 +45,8 @@ class Simulation(object):
         # Tracking measurements
         self.result_to_export = pd.DataFrame()
         self.tasks_logging_times = pd.DataFrame()
+        self.event_log = pd.DataFrame(columns=["time", "event"])
+
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
 
