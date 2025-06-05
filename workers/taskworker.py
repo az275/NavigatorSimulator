@@ -85,13 +85,15 @@ class TaskWorker(Worker):
                 # keep checking queue until batch is executed or tasks run out
 
         # if no queued tasks, maybe is never called and no wake up events are
-        # appended; assume in this case worker will be woken up when any new 
-        # task arrives
+        # appended; in this case worker sleeps until a new task arrives
         return []
     
 
     def maybe_start_task_for_type(self, current_time, task_type, task_wait_time, do_exec_batch) -> tuple[bool, list]:
         """
+            Execute a batch if 1) a batch of size max_batch_size can be created or 2) do_exec_batch is True
+            (do_exec_batch should be True when maybe is called by a wake up event)
+
             Returns did_exec_batch : bool, task_end_events : list[Event]
         """
         latest_time = current_time
@@ -104,6 +106,7 @@ class TaskWorker(Worker):
         queued_tasks = queue.Queue()
         [queued_tasks.put(task) for task in task_list]
 
+        # form largest batch < max_batch_size possible
         batch = []
         while (not queued_tasks.empty()) and self.num_free_slots > 0 and len(batch) < task_list[0].max_batch_size:
             task = queued_tasks.get()
@@ -126,16 +129,19 @@ class TaskWorker(Worker):
             did_exec_batch = True
             task_end_events += batch_end_events
 
+        # track next wake up time so old wake ups can be skipped
         next_check_time = latest_time + task_wait_time
+        self.next_check_times[task_type] = next_check_time
 
         # if idle, check again in wait time
-        task_end_events.append(
+        # NOTE: for some reason, appending to task_end_events does not always
+        # lead to event being enqueued; thus we enqueue directly to sim queue here
+        self.simulation.event_queue.put(
             EventOrders(
                 next_check_time,
                 WorkerWakeUpEvent(self, task_type, task_wait_time)
             )
         )
-        self.next_check_times[task_type] = next_check_time
 
         return did_exec_batch, task_end_events
 
@@ -148,15 +154,15 @@ class TaskWorker(Worker):
         model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
         batch_index = 0
-        for i, batch_size in enumerate(sorted(tasks[0].batch_sizes)): # assumes batch_sizes are sorted
-            if len(tasks) <= batch_size:
+        for i, batch_size in enumerate(sorted(tasks[0].batch_sizes)):
+            if len(tasks) <= batch_size: # choose smallest batch size > len(tasks)
                 batch_index = i
                 break
 
         task_end_time = current_time + model_fetch_time + tasks[0].batch_exec_time[batch_index]
         task_end_events = []
 
-        job_ids = []
+        job_ids = [] # for logging
 
         for task in tasks:
             events = self.send_result_to_next_workers(
