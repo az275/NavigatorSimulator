@@ -48,7 +48,8 @@ if __name__ == "__main__":
     # 2. Run and collect data
     if "centralheft" in experiment_schedulers:
         sim = Simulation_central(simulation_name="centralheft", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list)
+                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list, 
+                                    produce_breakdown=True)
         sim.run()
 
         event_log = sim.event_log
@@ -62,7 +63,8 @@ if __name__ == "__main__":
     if "hashtask" in experiment_schedulers:
         OUTPUT_FILENAME = "hashtask"
         sim = Simulation_central(simulation_name="hashtask", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list)
+                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list,
+                                    produce_breakdown=True)
         sim.run()
 
         event_log = sim.event_log
