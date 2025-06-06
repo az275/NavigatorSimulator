@@ -27,7 +27,7 @@ class TaskWorker(Worker):
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
         self.add_task_to_queue_history(task, current_time)
-        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_id, task.max_wait_time, False)
+        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_id, task.max_wait_time)
         return task_end_events
 
     def free_slot(self, current_time):
@@ -82,7 +82,7 @@ class TaskWorker(Worker):
             task = queued_tasks.get()
             if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
                 did_exec_batch, task_end_events = self.maybe_start_task_for_type(
-                    current_time, task.task_id, task.max_wait_time, False
+                    current_time, task.task_id, task.max_wait_time
                 )
                 if did_exec_batch:
                     return task_end_events
@@ -93,10 +93,9 @@ class TaskWorker(Worker):
         return []
     
 
-    def maybe_start_task_for_type(self, current_time, task_type, task_wait_time, do_exec_batch) -> tuple[bool, list]:
+    def maybe_start_task_for_type(self, current_time, task_type, task_wait_time) -> tuple[bool, list]:
         """
-            Execute a batch if 1) a batch of size max_batch_size can be created or 2) do_exec_batch is True
-            (do_exec_batch should be True when maybe is called by a wake up event)
+            Execute a batch if there are free slots available and at least 1 task queued.
 
             Returns did_exec_batch : bool, task_end_events : list[Event]
         """
@@ -118,9 +117,7 @@ class TaskWorker(Worker):
                 batch.append(task)
         
         # full batch or max wait time has passed
-        if len(task_list) > 0 and self.num_free_slots > 0 \
-            and (do_exec_batch or len(batch) >= task_list[0].max_batch_size):
-
+        if len(task_list) > 0 and self.num_free_slots > 0:
             batch_end_events, task_end_time = self.batch_execute(
                 batch, current_time)
             

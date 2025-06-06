@@ -230,7 +230,7 @@ class WorkerWakeUpEvent(Event):
     def run(self, current_time):
         if self.will_run(current_time):
             _, task_end_events = self.worker.maybe_start_task_for_type(
-                current_time, self.task_id, self.task_max_wait_time, True
+                current_time, self.task_id, self.task_max_wait_time
             )
             return task_end_events
         return []
