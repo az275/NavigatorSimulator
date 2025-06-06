@@ -83,14 +83,14 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
         workers[worker.worker_id] = worker
     sorted_tasks = ranking_tasks(job)
     workers_to_select = [w.worker_id for w in worker_list]
-    workers_EAT = {}   # worker_id -> (task_id -> earliest_available_time)
+    workers_EAT = {}   # worker_id -> (task_type -> earliest_available_time)
     workers_available_memory = {}  # worker_id -> available_memory
     # 1. initialize the earliest available time and memory for each worker
     for worker_id in workers_to_select:
         workers_EAT[worker_id] = {
             task_id: current_time + (workers[worker_id].get_task_queue_waittime(
                 current_time,
-                task_id,
+                (job.job_type_id, task_id),
                 info_staleness=LOAD_INFORMATION_STALENESS,
                 requiring_worker_id=initial_worker_id) if consider_load else 0)
             for task_id in sorted_tasks
@@ -158,7 +158,7 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
 def nav_heft_task_adjustment(job, task_id, workers, current_time, local_worker_id, allocated_worker_id) -> int:
     # 1. check assigned worker wait_time to decide if need to adjust assigned worker
     cur_wait_time = workers[allocated_worker_id].get_task_queue_waittime(current_time, \
-                                                                         task_id, \
+                                                                        (job.job_type_id, task_id), \
                                                                         info_staleness=LOAD_INFORMATION_STALENESS, \
                                                                         requiring_worker_id=local_worker_id)
     cur_task = job.tasks[task_id]
@@ -171,7 +171,7 @@ def nav_heft_task_adjustment(job, task_id, workers, current_time, local_worker_i
     earliest_start_time = float('inf')
     for cur_worker in workers:
         wait_time = cur_worker.get_task_queue_waittime(current_time, \
-                                                       task_id, \
+                                                       (job.job_type_id, task_id), \
                                                        info_staleness=LOAD_INFORMATION_STALENESS, \
                                                        requiring_worker_id=local_worker_id)
         cur_earliest_start_time = current_time + wait_time
