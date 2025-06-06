@@ -117,6 +117,7 @@ class Job(object):
 
             current_task = Task(self.id,  # ID of the associated unique Job
                                 task_cfg["TASK_INDEX"],  # taskID
+                                (self.job_type_id, task_cfg["TASK_INDEX"]), # task type
                                 task_cfg["EXECUTION_TIME"], 
                                 required_model_for_task, 
                                 task_cfg["INPUT_SIZE"],
