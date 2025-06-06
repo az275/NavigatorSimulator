@@ -169,17 +169,17 @@ class TaskEndEvent(Event):
 class BatchEndEvent(Event):
     """ Event to signify that a BATCH has been performed by the WORKER. """
 
-    def __init__(self, worker, job_ids=[], task_id=-1):
+    def __init__(self, worker, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
         self.job_ids = job_ids    # integers representing the job_ids
-        self.task_id = task_id  # integer representing the task_id
+        self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
         return self.worker.free_slot(current_time)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
-        return f"[Batch End (Task {self.task_id}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+        return f"[Batch End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
 
 
 # for PER_JOB scheduler
