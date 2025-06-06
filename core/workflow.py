@@ -16,9 +16,9 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 2,            # in kB
                 "EXECUTION_TIME": 561,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 1000,       # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [561, 561, 561, 561, 561]
+                "BATCH_EXEC_TIME": [561, 673, 808, 969, 1346]
                 },
                {"MODEL_NAME": "marian",
                 "MODEL_ID": 1,
@@ -30,9 +30,9 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 2,
                 "EXECUTION_TIME": 441,       # in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 1000,       # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [441, 441, 441, 441, 441]
+                "BATCH_EXEC_TIME": [441, 529, 687, 963, 1374]
                 },
                {"MODEL_NAME": "mt5",
                 "MODEL_ID": 2,
@@ -44,11 +44,11 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 2,
                 "EXECUTION_TIME": 778,       # in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 1000,       # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [778, 778, 778, 778, 778]
+                "BATCH_EXEC_TIME": [778, 855, 941, 1035, 1139]
                 },
-                {"MODEL_NAME": "mt5",
+               {"MODEL_NAME": "mt5",
                 "MODEL_ID": 2,
                 "TASK_INDEX": 3,
                 "PREV_TASK_INDEX": [0],
@@ -58,11 +58,11 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 2,
                 "EXECUTION_TIME": 803,       # in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 1000,       # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [803, 803, 803, 803, 803]
+                "BATCH_EXEC_TIME": [803, 833, 871, 939, 990]
                 },
-                {"MODEL_NAME": "",
+               {"MODEL_NAME": "",
                 "MODEL_ID": -1,
                 "TASK_INDEX": 4,
                 "PREV_TASK_INDEX": [1,2,3],
@@ -71,10 +71,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 2,           
                 "OUTPUT_SIZE": 2,
                 "EXECUTION_TIME": 1,         # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1]
+                "MAX_BATCH_SIZE": 64,
+                "MAX_WAIT_TIME": 500,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64],
+                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1, 1]
                 },
                ]
      },
@@ -93,9 +93,9 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 2,            # in kB
                 "EXECUTION_TIME": 560,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 1000,       # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [560, 560, 560, 560, 560]
+                "BATCH_EXEC_TIME": [560, 616, 677, 745, 820]
                 },
                {"MODEL_NAME": "NLI",
                 "MODEL_ID": 3,
@@ -106,10 +106,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 1,
                 "OUTPUT_SIZE": 1,
                 "EXECUTION_TIME": 27,        # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [27, 27, 27, 27, 27]
+                "MAX_BATCH_SIZE": 8,
+                "MAX_WAIT_TIME": 500,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8],
+                "BATCH_EXEC_TIME": [27, 48, 89, 170]
                 }
                ]
      },
@@ -127,9 +127,9 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 20,
                 "EXECUTION_TIME": 283,       # avg time, in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 500,        # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [283, 283, 283, 283, 283]
+                "BATCH_EXEC_TIME": [283, 339, 407, 489, 590]
                 },
                {"MODEL_NAME": "NLI",
                 "MODEL_ID": 3,
@@ -140,10 +140,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 20,            # 299×299, assuming 64 bits representation
                 "OUTPUT_SIZE": 10, 
                 "EXECUTION_TIME": 26,        # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [26, 26, 26, 26, 26]
+                "MAX_BATCH_SIZE": 2,
+                "MAX_WAIT_TIME": 100,        # ms
+                "BATCH_SIZES": [1, 2],
+                "BATCH_EXEC_TIME": [26, 48]
                 },
                {"MODEL_NAME": "txt2speech",
                 "MODEL_ID": 5,
@@ -154,12 +154,12 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 20,
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 76,        # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [76, 76, 76, 76, 76]
+                "MAX_BATCH_SIZE": 32,
+                "MAX_WAIT_TIME": 100,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8, 16, 32],
+                "BATCH_EXEC_TIME": [76, 77, 82, 91, 106, 135]
                 },
-                {"MODEL_NAME": "aggregate",
+               {"MODEL_NAME": "aggregate",
                 "MODEL_ID": -1,
                 "TASK_INDEX": 3,
                 "PREV_TASK_INDEX": [1,2],
@@ -168,10 +168,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 3000,
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 0.2,       # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [0.2, 0.2, 0.2, 0.2, 0.2]
+                "MAX_BATCH_SIZE": 64,
+                "MAX_WAIT_TIME": 100,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64],
+                "BATCH_EXEC_TIME": [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3]
                 }
                ]
      },
@@ -188,10 +188,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 3000,
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 0.6,       # avg time, in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [0.6, 0.6, 0.6, 0.6, 0.6]
+                "MAX_BATCH_SIZE": 32,
+                "MAX_WAIT_TIME": 100,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8, 16, 32],
+                "BATCH_EXEC_TIME": [0.6, 0.6, 0.6, 0.6, 0.6, 0.6]
                 },
                {"MODEL_NAME": "DETR",
                 "MODEL_ID": 8,
@@ -202,10 +202,10 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 3000,          # 299×299, assuming 64 bits representation
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 178,       # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [178, 178, 178, 178, 178]
+                "MAX_BATCH_SIZE": 4,
+                "MAX_WAIT_TIME": 500,        # ms
+                "BATCH_SIZES": [1, 2, 4],
+                "BATCH_EXEC_TIME": [178, 267, 400]
                 },
                {"MODEL_NAME": "Depth",
                 "MODEL_ID": 9,
@@ -217,11 +217,11 @@ WORKFLOW_LIST = [
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 147,       # in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
+                "MAX_WAIT_TIME": 500,        # ms
                 "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [147, 147, 147, 147, 147]
+                "BATCH_EXEC_TIME": [147, 150, 155, 162, 172]
                 },
-                {"MODEL_NAME": "Aggregate",
+               {"MODEL_NAME": "Aggregate",
                 "MODEL_ID": -1,
                 "TASK_INDEX": 3,
                 "PREV_TASK_INDEX": [1,2],
@@ -230,12 +230,11 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 3000,
                 "OUTPUT_SIZE": 3000,
                 "EXECUTION_TIME": 104,       # in ms
-                "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 5000,       # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16],
-                "BATCH_EXEC_TIME": [104, 104, 104, 104, 104]
+                "MAX_BATCH_SIZE": 8,
+                "MAX_WAIT_TIME": 500,        # ms
+                "BATCH_SIZES": [1, 2, 4, 8],
+                "BATCH_EXEC_TIME": [104, 130, 165, 213]
                 }
                ]
-     },
-
+     }
 ]
