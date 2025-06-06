@@ -166,6 +166,25 @@ class TaskEndEvent(Event):
         return "[Task End (Job {} - Task {}) at Worker {}] ===".format(self.job_id, self.task_id, self.worker.worker_id)
 
 
+class BatchStartEvent(Event):
+    """ 
+        Event to signify that a BATCH has started executing in WORKER.
+        Only for logging purposes.
+    """
+
+    def __init__(self, worker, job_ids=[], task_type=(-1, -1)):
+        self.worker = worker
+        self.job_ids = job_ids      # list[int] with the job_ids in the batch
+        self.task_type = task_type  # (workflow_id, task_id) identifying the batch task_type
+
+    def run(self, current_time):
+        return []
+
+    def to_string(self):
+        jobs = ",".join([str(id) for id in self.job_ids])
+        return f"[Batch Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+
+
 class BatchEndEvent(Event):
     """ Event to signify that a BATCH has been performed by the WORKER. """
 

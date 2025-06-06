@@ -21,7 +21,7 @@ class TaskWorker(Worker):
         Add task into the local task queue
         """
 
-        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
@@ -182,7 +182,7 @@ class TaskWorker(Worker):
         return self._maybe_start_batch(task_queue, current_time)
 
     def batch_execute(self, tasks, current_time):
-        self.current_batch = tasks
+        assert(len(tasks) > 0) # cannot launch empty batch
 
         self.involved = True
         if tasks[0].model != None:
@@ -227,6 +227,9 @@ class TaskWorker(Worker):
             "job_ids": job_ids
         }
 
+        task_end_events.append(EventOrders(current_time + model_fetch_time, BatchStartEvent(
+            self, job_ids=job_ids, task_type=tasks[0].task_type
+        )))
         task_end_events.append(EventOrders(task_end_time, BatchEndEvent(
             self, tasks[0].model, job_ids=job_ids, task_type=tasks[0].task_type
         )))
