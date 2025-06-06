@@ -78,7 +78,12 @@ class TaskWorker(Worker):
 
         task_types = self.queue_history.keys()
         task_queues = { task_type: self.get_queue_history(current_time, task_type, info_staleness) for task_type in task_types }
-        
+        if self.simulation.use_boost:
+            for task_type in task_queues.keys():
+                task_queues[task_type] = sorted(
+                    task_queues[task_type], key=lambda x: x.priority
+                )
+
         task_types_by_arrival = sorted(
             filter(lambda task_type: len(task_queues[task_type]) > 0, task_types),
             key=lambda task_type: task_queues[task_type][0].log.task_placed_on_worker_queue_timestamp,
@@ -118,6 +123,9 @@ class TaskWorker(Worker):
         task_end_events = []
         task_list = self.get_queue_history(current_time, task_type, info_staleness=0)
         
+        if self.simulation.use_boost:
+            task_list = sorted(task_list, key=lambda x: x.priority)
+
         queued_tasks = queue.Queue()
         [queued_tasks.put(task) for task in task_list]
 
