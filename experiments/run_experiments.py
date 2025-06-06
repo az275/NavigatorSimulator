@@ -12,7 +12,8 @@ sys.dont_write_bytecode = True
 
 # experiment_schedulers options: centralheft | decentralheft | hashtask
 experiment_schedulers = []
-plotting_job_type_list = [0, 1, 2, 3]
+plotting_job_type_list = [0, 1]
+# plotting_job_type_list = [0, 1, 2, 3]
 # plotting_job_type_list = [2,3]
 np.random.seed(42)
 
