@@ -55,5 +55,3 @@ class Simulation_decentral(Simulation):
                 last_time = cur_event.current_time
                 self.event_queue.put(new_event)
         self.run_finish(last_time, by_job_type=True)
-        
-        

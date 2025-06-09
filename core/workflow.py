@@ -5,12 +5,26 @@ WORKFLOW_LIST = [
     {"JOB_TYPE": 0,         # ID of the type of workflow (dependency graph)
      "JOB_NAME": "textvision",
      # the minimum amount of time necessary to execute the whole job
-     "BEST_EXEC_TIME": 50.7,
-     "TASKS": [{"MODEL_NAME": "text_encoder",
-                "MODEL_ID": 0,
+     "BEST_EXEC_TIME": 51.7,
+     "TASKS": [{"MODEL_NAME": "",
+                "MODEL_ID": -1,
                 "TASK_INDEX": 0,
                 "PREV_TASK_INDEX": [],
-                "NEXT_TASK_INDEX": [2],
+                "NEXT_TASK_INDEX": [1, 2],
+                "MODEL_SIZE": 0,             # in KB
+                "INPUT_SIZE": 1,
+                "OUTPUT_SIZE": 1,
+                "EXECUTION_TIME": 1,         # in ms
+                "MAX_BATCH_SIZE": 128,
+                "MAX_WAIT_TIME": 50,         # ms
+                "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64, 128],
+                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1, 1, 1]
+                },
+               {"MODEL_NAME": "text_encoder",
+                "MODEL_ID": 0,
+                "TASK_INDEX": 1,
+                "PREV_TASK_INDEX": [0],
+                "NEXT_TASK_INDEX": [3],
                 "MODEL_SIZE": 5677000,       # in kB
                 "INPUT_SIZE": 1,
                 "OUTPUT_SIZE": 2,            # in kB
@@ -22,9 +36,9 @@ WORKFLOW_LIST = [
                 },
                {"MODEL_NAME": "vision_encoder",
                 "MODEL_ID": 1,
-                "TASK_INDEX": 1,
-                "PREV_TASK_INDEX": [],
-                "NEXT_TASK_INDEX": [2],
+                "TASK_INDEX": 2,
+                "PREV_TASK_INDEX": [0],
+                "NEXT_TASK_INDEX": [3],
                 "MODEL_SIZE": 11655000,      # in kB
                 "INPUT_SIZE": 10000,
                 "OUTPUT_SIZE": 100,
@@ -36,9 +50,9 @@ WORKFLOW_LIST = [
                 },
                {"MODEL_NAME": "flmr",
                 "MODEL_ID": 2,
-                "TASK_INDEX": 2,
-                "PREV_TASK_INDEX": [0,1],
-                "NEXT_TASK_INDEX": [3],
+                "TASK_INDEX": 3,
+                "PREV_TASK_INDEX": [1,2],
+                "NEXT_TASK_INDEX": [4],
                 "MODEL_SIZE": 854000,        # in KB
                 "INPUT_SIZE": 102,
                 "OUTPUT_SIZE": 5,
@@ -50,8 +64,8 @@ WORKFLOW_LIST = [
                 },
                {"MODEL_NAME": "search",
                 "MODEL_ID": 3,
-                "TASK_INDEX": 3,
-                "PREV_TASK_INDEX": [2],
+                "TASK_INDEX": 4,
+                "PREV_TASK_INDEX": [3],
                 "NEXT_TASK_INDEX": [],
                 "MODEL_SIZE": 777000,        # in KB
                 "INPUT_SIZE": 5,
