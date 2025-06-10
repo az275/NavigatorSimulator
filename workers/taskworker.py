@@ -117,6 +117,10 @@ class TaskWorker(Worker):
 
         task_end_events = []
         task_list = self.get_queue_history(current_time, task_type, info_staleness=0)
+
+        if len(task_list) == 0:
+            # don't enqueue a wake up when no events; will alr. be called on next enqueue
+            return False, []
         
         queued_tasks = queue.Queue()
         [queued_tasks.put(task) for task in task_list]
