@@ -12,6 +12,7 @@ class Worker(object):
         self.worker_id = worker_id
         self.simulation = simulation
         self.num_free_slots = num_free_slots
+        self.current_batch = [] # track the currently executing batch (if any)
         self.GPU_memory_models = []
         # Keep track of the list of models sitting in GPU memory at time: 
         # {time-> list of model objects} : [ (time1,[model0,model1,]), (time2,[model1,...]),...]
@@ -56,6 +57,26 @@ class Worker(object):
         return sum(m.model_size for m in models)
 
     #  ----------  LOCAL MEMORY MANAGEMENT AND RETRIEVE  ----------"""
+    def does_have_model(self, model, current_time: float, info_staleness=0) -> bool:
+        w_models = self.get_model_history(current_time, info_staleness)
+        return model in w_models
+    
+    def can_fit(self, min_required_memory: int, current_time: float, info_staleness=0) -> bool:
+        # if currently available memory >= min_required_memory
+        used_memory = self.used_GPUmemory(current_time, info_staleness=info_staleness)
+        if GPU_MEMORY_SIZE - used_memory >= min_required_memory:
+            return True
+        
+        # if not executing any batches or executing a batch with no model,
+        # existing models can be evicted to make space
+        if (self.current_batch == [] or self.current_batch[0].model == None) and \
+            min_required_memory <= GPU_MEMORY_SIZE:
+            return True
+        
+        # if evicting all except current batch's required model can make enough space
+        if GPU_MEMORY_SIZE - self.current_batch[0].model.model_size >= min_required_memory:
+            return True
+
     def fetch_model(self, model, current_time):
         """
         Return: model transfer time required to execute the Task
@@ -67,9 +88,8 @@ class Worker(object):
         if model is None:
             return 0
         # First check if the model is stored locally: either on GPU, or systemRAM(home node)
-        w_models = self.get_model_history(current_time, info_staleness=0)
         # case1: if it is in local GPU already
-        if model in w_models:
+        if self.does_have_model(model, current_time):
             return 0
         fetch_time = 0
         fetch_time = SameMachineCPUtoGPU_delay(model.model_size)
@@ -78,6 +98,63 @@ class Worker(object):
         self.add_model_to_memory_history(model, current_time + fetch_time)
         eviction_time = self.evict_model_from_GPU(current_time + fetch_time)
         return fetch_time + eviction_time
+    
+    # Required to be overriden
+    def get_next_tasks(self, lookahead_count: int, current_time: float, info_staleness=0):
+        """
+            Returns a list of up to lookahead_count tasks in order of when they are
+            expected to begin execution on the worker.
+        """
+        return []
+
+
+    def _evict_models_from_GPU(self, models_to_evict, current_time):
+        eviction_duration = 0
+        required_current_model = self.current_batch[0].model if self.current_batch else None
+        for model in models_to_evict:
+            if model != required_current_model:
+                self.simulation.metadata_service.rm_model_cached_location(
+                    model, self.worker_id, current_time)
+                self.rm_model_in_memory_history(model, current_time)
+                eviction_duration += SameMachineGPUtoCPU_delay(model.model_size)
+        return eviction_duration
+
+
+    def evict_models_from_GPU_until(self, current_time: float, min_required_memory: int) -> float:
+        """
+            Evicts models from GPU according to lookahead eviction policy until at least
+            min_required_memory space is available. Returns time taken to execute model
+            evictions. 0 if min_required_memory could not be created.
+        """
+        if not self.can_fit(min_required_memory, current_time):
+            return 0
+        
+        curr_memory = GPU_MEMORY_SIZE - self.used_GPUmemory(current_time)
+       
+        models_in_GPU = self.get_model_history(current_time, info_staleness=0)
+        required_current_model = self.current_batch[0].model if self.current_batch else None
+        next_models = set(map(lambda task: task.model, self.get_next_tasks(3)))
+
+        models_to_evict = []
+
+        for i, model in enumerate(models_in_GPU):
+            # lowest priority models
+            if model not in next_models and model != required_current_model:
+                curr_memory -= model.model_size
+                models_to_evict.append(model)
+                if curr_memory >= min_required_memory:
+                    return self._evict_models_from_GPU(models_to_evict)
+
+        # next look at future models from latest -> earliest to be used
+        for model in next_models[::-1]:
+            if model in models_in_GPU and model != required_current_model:
+                curr_memory -= model.model_size
+                models_to_evict.append(model)
+                if curr_memory >= min_required_memory:
+                    return self._evict_models_from_GPU(models_to_evict)
+        
+        return 0
+    
 
     def evict_model_from_GPU(self, current_time):
         """
@@ -92,7 +169,7 @@ class Worker(object):
             models_total_size += model.model_size
         eviction_index = 0
         eviction_duration = 0
-        while(models_total_size > GPU_MEMORY_SIZE):
+        while (models_total_size > GPU_MEMORY_SIZE):
             rm_model = models_in_GPU[eviction_index]
             self.simulation.metadata_service.rm_model_cached_location(
                 rm_model, self.worker_id, current_time)
