@@ -160,7 +160,7 @@ class TaskEndEvent(Event):
         self.task_id = task_id  # integer representing the task_id
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time)
+        return self.worker.free_slot(current_time, self)
 
     def to_string(self):
         return "[Task End (Job {} - Task {}) at Worker {}] ===".format(self.job_id, self.task_id, self.worker.worker_id)
@@ -169,13 +169,14 @@ class TaskEndEvent(Event):
 class BatchEndEvent(Event):
     """ Event to signify that a BATCH has been performed by the WORKER. """
 
-    def __init__(self, worker, job_ids=[], task_type=(-1, -1)):
+    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
+        self.model = model
         self.job_ids = job_ids    # integers representing the job_ids
         self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time)
+        return self.worker.free_slot(current_time, self.model)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
@@ -229,10 +230,8 @@ class WorkerWakeUpEvent(Event):
 
     def run(self, current_time):
         if self.will_run(current_time):
-            _, task_end_events = self.worker.maybe_start_task_for_type(
-                current_time, self.task_id, self.task_max_wait_time
-            )
-            return task_end_events
+            return self.worker.maybe_start_task_for_type(
+                current_time, self.task_id, self.task_max_wait_time)
         return []
 
     def to_string(self):
