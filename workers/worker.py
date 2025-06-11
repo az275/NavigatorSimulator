@@ -17,7 +17,7 @@ class Worker(object):
         # Keep track of the list of models sitting in GPU memory at time: 
         # {time-> list of model objects} : [ (time1,[model0,model1,]), (time2,[model1,...]),...]
         self.GPU_memory_models_history = []
-        
+        self.models_in_use = []
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -61,6 +61,10 @@ class Worker(object):
         w_models = self.get_model_history(current_time, info_staleness)
         return model in w_models
     
+    def copies_in_memory(self, model, current_time: float, info_staleness=0) -> int:
+        w_models = self.get_model_history(current_time, info_staleness)
+        return w_models.count(model)
+
     def can_fit(self, min_required_memory: int, current_time: float, info_staleness=0) -> bool:
         # if currently available memory >= min_required_memory
         used_memory = self.used_GPUmemory(current_time, info_staleness=info_staleness)
@@ -99,20 +103,18 @@ class Worker(object):
         eviction_time = self.evict_model_from_GPU(current_time + fetch_time)
         return fetch_time + eviction_time
     
-    # Required to be overriden
-    def get_next_tasks(self, lookahead_count: int, current_time: float, info_staleness=0):
+    # NOTE: REQUIRED OVERRIDE
+    def get_next_models(self, lookahead_count: int, current_time: float, info_staleness=0):
         """
-            Returns a list of up to lookahead_count tasks in order of when they are
-            expected to begin execution on the worker.
+            Returns a list of up to lookahead_count models in order of when they are
+            expected to be executed.
         """
         return []
 
-
     def _evict_models_from_GPU(self, models_to_evict, current_time):
         eviction_duration = 0
-        required_current_model = self.current_batch[0].model if self.current_batch else None
         for model in models_to_evict:
-            if model != required_current_model:
+            if model not in self.models_in_use:
                 self.simulation.metadata_service.rm_model_cached_location(
                     model, self.worker_id, current_time)
                 self.rm_model_in_memory_history(model, current_time)
@@ -125,6 +127,7 @@ class Worker(object):
             Evicts models from GPU according to lookahead eviction policy until at least
             min_required_memory space is available. Returns time taken to execute model
             evictions. 0 if min_required_memory could not be created.
+            Assumes batches run in first task arrival order.
         """
         if not self.can_fit(min_required_memory, current_time):
             return 0
@@ -132,26 +135,20 @@ class Worker(object):
         curr_memory = GPU_MEMORY_SIZE - self.used_GPUmemory(current_time)
        
         models_in_GPU = self.get_model_history(current_time, info_staleness=0)
-        required_current_model = self.current_batch[0].model if self.current_batch else None
-        next_models = set(map(lambda task: task.model, self.get_next_tasks(3)))
+        next_models = self.get_next_models(3, current_time)
+        models_in_GPU_sorted = sorted(
+            models_in_GPU, 
+            key=lambda m: next_models.index(m) if m in next_models else len(next_models),
+            reverse=True
+        )
 
         models_to_evict = []
-
-        for i, model in enumerate(models_in_GPU):
-            # lowest priority models
-            if model not in next_models and model != required_current_model:
+        for model in models_in_GPU_sorted:
+            if model not in self.models_in_use:
                 curr_memory -= model.model_size
                 models_to_evict.append(model)
                 if curr_memory >= min_required_memory:
-                    return self._evict_models_from_GPU(models_to_evict)
-
-        # next look at future models from latest -> earliest to be used
-        for model in next_models[::-1]:
-            if model in models_in_GPU and model != required_current_model:
-                curr_memory -= model.model_size
-                models_to_evict.append(model)
-                if curr_memory >= min_required_memory:
-                    return self._evict_models_from_GPU(models_to_evict)
+                    return self._evict_models_from_GPU(models_to_evict, current_time)
         
         return 0
     
