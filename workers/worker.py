@@ -106,11 +106,9 @@ class Worker(object):
             1. model_history on worker
             2. cache_history on metadata_service
         """
-        if model is None:
-            return 0
-        # First check if the model is stored locally: either on GPU, or systemRAM(home node)
-        # case1: if it is in local GPU already
-        if self.does_have_model(model, current_time):
+        # check if exists a copy of the model not currently in use
+        if model is None or \
+            self.copies_in_memory(model, current_time) - self.models_in_use.count(model) > 0:
             return 0
         
         fetch_time = 0
@@ -153,10 +151,12 @@ class Worker(object):
                 }
         return eviction_duration
 
+    LOOKAHEAD_EVICTION = 0
+    FCFS_EVICTION = 1
 
-    def evict_models_from_GPU_until(self, current_time: float, min_required_memory: int) -> float:
+    def evict_models_from_GPU_until(self, current_time: float, min_required_memory: int, policy: int) -> float:
         """
-            Evicts models from GPU according to lookahead eviction policy until at least
+            Evicts models from GPU according to FCFS or lookahead eviction policy until at least
             min_required_memory space is available. Returns time taken to execute model
             evictions. 0 if min_required_memory could not be created.
             Assumes batches run in first task arrival order.
@@ -167,15 +167,16 @@ class Worker(object):
         curr_memory = GPU_MEMORY_SIZE - self.used_GPUmemory(current_time)
        
         models_in_GPU = self.get_model_history(current_time, info_staleness=0)
-        next_models = self.get_next_models(3, current_time)
-        models_in_GPU_sorted = sorted(
-            models_in_GPU, 
-            key=lambda m: next_models.index(m) if m in next_models else len(next_models),
-            reverse=True
-        )
+        if policy == self.LOOKAHEAD_EVICTION:
+            next_models = self.get_next_models(3, current_time)
+            models_in_GPU = sorted(
+                models_in_GPU, 
+                key=lambda m: next_models.index(m) if m in next_models else len(next_models),
+                reverse=True
+            )
 
         models_to_evict = []
-        for model in models_in_GPU_sorted:
+        for model in models_in_GPU:
             if model not in self.models_in_use:
                 curr_memory -= model.model_size
                 models_to_evict.append(model)
