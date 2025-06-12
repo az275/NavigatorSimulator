@@ -21,7 +21,7 @@ class TaskWorker(Worker):
         Add task into the local task queue
         """
 
-        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
@@ -136,7 +136,7 @@ class TaskWorker(Worker):
         can_run = self.can_run_task(current_time, task_queue[0].model)
         if can_run == self._CAN_RUN_ON_LOAD:
             current_time += self.evict_models_from_GPU_until(
-                current_time, task_queue[0].model.model_size)
+                current_time, task_queue[0].model.model_size, self.LOOKAHEAD_EVICTION)
         
         if can_run == self._CAN_RUN_NOW or can_run == self._CAN_RUN_ON_LOAD:
             queued_tasks = queue.Queue()
