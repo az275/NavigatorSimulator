@@ -44,6 +44,7 @@ class Simulation(object):
         self.result_to_export = pd.DataFrame()
         self.tasks_logging_times = pd.DataFrame()
         self.event_log = pd.DataFrame(columns=["time", "event"])
+        self.batch_exec_log = pd.DataFrame(columns=["time", "worker_id", "workflow_id", "task_id", "batch_size", "model_exec_time", "batch_exec_time", "job_ids"])
 
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown

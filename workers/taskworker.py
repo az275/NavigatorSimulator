@@ -21,7 +21,7 @@ class TaskWorker(Worker):
         Add task into the local task queue
         """
 
-        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
@@ -199,6 +199,17 @@ class TaskWorker(Worker):
             task.log.task_front_queue_timestamp = current_time
             task.log.task_execution_start_timestamp = current_time + model_fetch_time
             task.log.task_execution_end_timestamp = task_end_time
+
+        self.simulation.batch_exec_log.loc[len(self.simulation.batch_exec_log)] = {
+            "time": current_time,
+            "worker_id": self.worker_id,
+            "workflow_id": tasks[0].task_type[0],
+            "task_id": tasks[0].task_id,
+            "batch_size": len(tasks),
+            "model_exec_time": tasks[0].batch_exec_time[batch_index],
+            "batch_exec_time": model_fetch_time + tasks[0].batch_exec_time[batch_index],
+            "job_ids": job_ids
+        }
 
         task_end_events.append(EventOrders(current_time + model_fetch_time, BatchStartEvent(
             self, job_ids=job_ids, task_type=tasks[0].task_type
