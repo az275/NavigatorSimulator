@@ -84,6 +84,14 @@ if __name__ == "__main__":
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+        
+        sim.batch_exec_log.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "batch_log.csv")
+        
+        worker_model_histories = pd.concat(list(map(lambda w: w.model_history_log, sim.workers)), 
+                                           keys=list(map(lambda w: w.worker_id, sim.workers)), 
+                                           names=['worker_id']).reset_index(level='worker_id')
+        worker_model_histories = worker_model_histories.sort_values(by="start_time")
+        worker_model_histories.to_csv(OUTPUT_FILE_NAMES["boostcentralheft"] + "model_history_log.csv")
 
     if "hashtask" in experiment_schedulers:
         OUTPUT_FILENAME = "hashtask"
