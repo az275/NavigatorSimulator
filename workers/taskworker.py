@@ -20,6 +20,10 @@ class TaskWorker(Worker):
         """
         Add task into the local task queue
         """
+
+        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+
+        # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
         self.add_task_to_queue_history(task, current_time) # Update when the task is sent to the worker
         return self.maybe_start_task_for_type(current_time, task.task_type, task.max_wait_time)
@@ -95,8 +99,7 @@ class TaskWorker(Worker):
         if model == None: # doesn't use GPU
             return self._CAN_RUN_NOW
         # has >= 1 copies of model in memory that are not currently in use
-        elif self.does_have_model(model, current_time, info_staleness) and \
-             self.copies_in_memory(model, current_time) - self.models_in_use.count(model) > 0:
+        elif self.copies_in_memory(model, current_time) - self.models_in_use.count(model) > 0:
                 return self._CAN_RUN_NOW
         elif self.can_fit(model.model_size, current_time, info_staleness):
             return self._CAN_RUN_ON_LOAD
@@ -184,6 +187,7 @@ class TaskWorker(Worker):
         self.involved = True
         if tasks[0].model != None:
             self.models_in_use.append(tasks[0].model)
+        
         model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
         batch_index = 0
@@ -211,6 +215,17 @@ class TaskWorker(Worker):
             task.log.task_front_queue_timestamp = current_time
             task.log.task_execution_start_timestamp = current_time + model_fetch_time
             task.log.task_execution_end_timestamp = task_end_time
+
+        self.simulation.batch_exec_log.loc[len(self.simulation.batch_exec_log)] = {
+            "time": current_time,
+            "worker_id": self.worker_id,
+            "workflow_id": tasks[0].task_type[0],
+            "task_id": tasks[0].task_id,
+            "batch_size": len(tasks),
+            "model_exec_time": tasks[0].batch_exec_time[batch_index],
+            "batch_exec_time": model_fetch_time + tasks[0].batch_exec_time[batch_index],
+            "job_ids": job_ids
+        }
 
         task_end_events.append(EventOrders(task_end_time, BatchEndEvent(
             self, tasks[0].model, job_ids=job_ids, task_type=tasks[0].task_type
