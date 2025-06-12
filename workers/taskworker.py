@@ -182,7 +182,8 @@ class TaskWorker(Worker):
         self.current_batch = tasks
 
         self.involved = True
-        self.models_in_use.append(tasks[0].model)
+        if tasks[0].model != None:
+            self.models_in_use.append(tasks[0].model)
         model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
         batch_index = 0

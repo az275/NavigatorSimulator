@@ -17,7 +17,7 @@ class Worker(object):
         # Keep track of the list of models sitting in GPU memory at time: 
         # {time-> list of model objects} : [ (time1,[model0,model1,]), (time2,[model1,...]),...]
         self.GPU_memory_models_history = []
-        self.models_in_use = []
+        self.models_in_use = [] # models in use by a currently executing batch
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -71,14 +71,11 @@ class Worker(object):
         if GPU_MEMORY_SIZE - used_memory >= min_required_memory:
             return True
         
-        # if not executing any batches or executing a batch with no model,
-        # existing models can be evicted to make space
-        if (self.current_batch == [] or self.current_batch[0].model == None) and \
-            min_required_memory <= GPU_MEMORY_SIZE:
+        if self.models_in_use == [] and min_required_memory <= GPU_MEMORY_SIZE:
             return True
         
-        # if evicting all except current batch's required model can make enough space
-        if GPU_MEMORY_SIZE - self.current_batch[0].model.model_size >= min_required_memory:
+        # if evicting all except current required models can make enough space
+        if GPU_MEMORY_SIZE - sum(map(lambda m: m.model_size, self.models_in_use)) >= min_required_memory:
             return True
 
     def fetch_model(self, model, current_time):
