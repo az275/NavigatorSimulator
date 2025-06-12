@@ -2,7 +2,8 @@ from pickle import NONE
 from core.config import *
 from core.network import *
 from core.config import *
-import sys
+
+import pandas as pd
 
 
 class Worker(object):
@@ -12,11 +13,15 @@ class Worker(object):
         self.worker_id = worker_id
         self.simulation = simulation
         self.num_free_slots = num_free_slots
+        self.current_batch = [] # track the currently executing batch (if any)
         self.GPU_memory_models = []
         # Keep track of the list of models sitting in GPU memory at time: 
         # {time-> list of model objects} : [ (time1,[model0,model1,]), (time2,[model1,...]),...]
         self.GPU_memory_models_history = []
-        
+        self.models_in_use = [] # models in use by a currently executing batch
+
+        self.model_history_log = pd.DataFrame(columns=["start_time", "end_time",
+                                                       "model_id", "placed_or_evicted"])
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -56,6 +61,43 @@ class Worker(object):
         return sum(m.model_size for m in models)
 
     #  ----------  LOCAL MEMORY MANAGEMENT AND RETRIEVE  ----------"""
+    def does_have_model(self, model, current_time: float, info_staleness=0) -> bool:
+        w_models = self.get_model_history(current_time, info_staleness)
+        return model in w_models
+    
+    def copies_in_memory(self, model, current_time: float, info_staleness=0) -> int:
+        w_models = self.get_model_history(current_time, info_staleness)
+        return w_models.count(model)
+
+    def can_fit(self, min_required_memory: int, current_time: float, info_staleness=0) -> bool:
+        # models currently being fetched = models in use - models loaded on GPU
+        loaded_models = self.get_model_history(current_time, info_staleness)
+        fetching_models = []
+        for model in self.models_in_use:
+            if model in loaded_models:
+                loaded_models.remove(model)
+            else:
+                fetching_models.append(model)
+
+        # loaded models + models currently being fetched
+        used_memory = self.used_GPUmemory(current_time, info_staleness=info_staleness) + \
+                      sum([model.model_size for model in fetching_models])
+        
+        # if currently available memory >= min_required_memory
+        if GPU_MEMORY_SIZE - used_memory >= min_required_memory:
+            return True
+        
+        # if no batches/current batches do not use GPU
+        if self.models_in_use == [] and min_required_memory <= GPU_MEMORY_SIZE:
+            return True
+        
+        # if evicting all except current required models & models being fetched can make enough space
+        if GPU_MEMORY_SIZE - sum(map(lambda m: m.model_size, self.models_in_use)) - \
+            sum(map(lambda m: m.model_size, fetching_models)) >= min_required_memory:
+            return True
+        
+        return False
+
     def fetch_model(self, model, current_time):
         """
         Return: model transfer time required to execute the Task
@@ -64,43 +106,84 @@ class Worker(object):
             1. model_history on worker
             2. cache_history on metadata_service
         """
-        if model is None:
+        # check if exists a copy of the model not currently in use
+        if model is None or \
+            self.copies_in_memory(model, current_time) - self.models_in_use.count(model) > 0:
             return 0
-        # First check if the model is stored locally: either on GPU, or systemRAM(home node)
-        w_models = self.get_model_history(current_time, info_staleness=0)
-        # case1: if it is in local GPU already
-        if model in w_models:
-            return 0
+        
         fetch_time = 0
         fetch_time = SameMachineCPUtoGPU_delay(model.model_size)
+
+        self.model_history_log.loc[len(self.model_history_log)] = {
+            "start_time": current_time,
+            "end_time": current_time + fetch_time, 
+            "model_id": model.model_id,
+            "placed_or_evicted": "placed"
+        }
+
         self.simulation.metadata_service.add_model_cached_location(
             model, self.worker_id, current_time + fetch_time)
         self.add_model_to_memory_history(model, current_time + fetch_time)
-        eviction_time = self.evict_model_from_GPU(current_time + fetch_time)
-        return fetch_time + eviction_time
+        return fetch_time
+    
+    # NOTE: REQUIRED OVERRIDE
+    def get_next_models(self, lookahead_count: int, current_time: float, info_staleness=0):
+        """
+            Returns a list of up to lookahead_count models in order of when they are
+            expected to be executed.
+        """
+        return []
 
-    def evict_model_from_GPU(self, current_time):
-        """
-        Do nothing if current cached models didn't exceed the GPU memory
-        remove this information to 2 histories:  
-            1. model_history on worker
-            2. cache_history on metadata_service
-        """
-        models_in_GPU = self.get_model_history(current_time, info_staleness=0)
-        models_total_size = 0
-        for model in models_in_GPU:
-            models_total_size += model.model_size
-        eviction_index = 0
+    def _evict_models_from_GPU(self, models_to_evict, current_time):
         eviction_duration = 0
-        while(models_total_size > GPU_MEMORY_SIZE):
-            rm_model = models_in_GPU[eviction_index]
-            self.simulation.metadata_service.rm_model_cached_location(
-                rm_model, self.worker_id, current_time)
-            self.rm_model_in_memory_history(rm_model, current_time)
-            models_total_size -= rm_model.model_size
-            eviction_index += 1
-            eviction_duration += SameMachineGPUtoCPU_delay(rm_model.model_size)
+        for model in models_to_evict:
+            if model not in self.models_in_use:
+                self.simulation.metadata_service.rm_model_cached_location(
+                    model, self.worker_id, current_time)
+                self.rm_model_in_memory_history(model, current_time)
+                eviction_duration += SameMachineGPUtoCPU_delay(model.model_size)
+
+                self.model_history_log.loc[len(self.model_history_log)] = {
+                    "start_time": current_time,
+                    "end_time": current_time + eviction_duration, 
+                    "model_id": model.model_id,
+                    "placed_or_evicted": "evicted"
+                }
         return eviction_duration
+
+    LOOKAHEAD_EVICTION = 0
+    FCFS_EVICTION = 1
+
+    def evict_models_from_GPU_until(self, current_time: float, min_required_memory: int, policy: int) -> float:
+        """
+            Evicts models from GPU according to FCFS or lookahead eviction policy until at least
+            min_required_memory space is available. Returns time taken to execute model
+            evictions. 0 if min_required_memory could not be created.
+            Assumes batches run in first task arrival order.
+        """
+        if not self.can_fit(min_required_memory, current_time):
+            return 0
+        
+        curr_memory = GPU_MEMORY_SIZE - self.used_GPUmemory(current_time)
+       
+        models_in_GPU = self.get_model_history(current_time, info_staleness=0)
+        if policy == self.LOOKAHEAD_EVICTION:
+            next_models = self.get_next_models(3, current_time)
+            models_in_GPU = sorted(
+                models_in_GPU, 
+                key=lambda m: next_models.index(m) if m in next_models else len(next_models),
+                reverse=True
+            )
+
+        models_to_evict = []
+        for model in models_in_GPU:
+            if model not in self.models_in_use:
+                curr_memory -= model.model_size
+                models_to_evict.append(model)
+                if curr_memory >= min_required_memory:
+                    return self._evict_models_from_GPU(models_to_evict, current_time)
+        
+        return 0
 
     # ------------------------- cached model history update helper functions ---------------
     def add_model_to_memory_history(self, model, current_time):

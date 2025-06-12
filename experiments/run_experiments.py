@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 
 # experiment_schedulers options: centralheft | decentralheft | hashtask
 experiment_schedulers = []
-plotting_job_type_list = [0, 1, 2, 3]
+plotting_job_type_list = [0]
 # plotting_job_type_list = [2,3]
 np.random.seed(42)
 
@@ -61,6 +61,9 @@ if __name__ == "__main__":
         event_log.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "events_by_time.csv")
 
         # result_to_export = sim.result_to_export
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "job_breakdown.csv")
+
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
@@ -113,6 +116,17 @@ if __name__ == "__main__":
         event_log = sim.event_log
         event_log.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "events_by_time.csv")
         
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "job_breakdown.csv")
+
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+        
+        sim.batch_exec_log.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "batch_log.csv")
+        
+        worker_model_histories = pd.concat(list(map(lambda w: w.model_history_log, sim.workers)), 
+                                           keys=list(map(lambda w: w.worker_id, sim.workers)), 
+                                           names=['worker_id']).reset_index(level='worker_id')
+        worker_model_histories = worker_model_histories.sort_values(by="start_time")
+        worker_model_histories.to_csv(OUTPUT_FILE_NAMES["decentralheft"] + "model_history_log.csv")

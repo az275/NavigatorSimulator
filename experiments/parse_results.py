@@ -144,6 +144,30 @@ def gen_stats(job_df, event_df):
     # print(f"TPUT: {len(job_df) / event_df.loc[len(events_df)-1]["time"]}")
     
 
+def plot_model_loading_histogram(model_df, out_path):
+    fig = plt.figure(figsize=(8, 6))
+
+    plt.hist(model_df[model_df["placed_or_evicted"] == "placed"]["start_time"], bins=15, edgecolor='black')
+
+    plt.xlabel("Time")
+    plt.ylabel("Number of models loaded")
+    plt.title(f"Model Loading Over Time")
+
+    plt.savefig(os.path.join(out_path, f"model_loading_hist.png"))
+
+
+def plot_model_eviction_histogram(model_df, out_path):
+    fig = plt.figure(figsize=(8, 6))
+
+    plt.hist(model_df[model_df["placed_or_evicted"] == "evicted"]["start_time"], bins=15, edgecolor='black')
+
+    plt.xlabel("Time")
+    plt.ylabel("Number of models evicted")
+    plt.title(f"Model Eviction Over Time")
+
+    plt.savefig(os.path.join(out_path, f"model_eviction_hist.png"))
+
+
 results_dir_path = sys.argv[1] # results/<scheduler_type>
 out_path = sys.argv[2] if len(sys.argv) > 2 else "parsed_results"
 
@@ -152,7 +176,10 @@ os.makedirs(out_path, exist_ok=True)
 job_df = pd.read_csv(os.path.join(results_dir_path, "job_breakdown.csv"))
 # task_df = pd.read_csv(os.path.join(results_dir_path, "loadDelay_1_placementDelay_1.csv"))
 events_df = pd.read_csv(os.path.join(results_dir_path, 'events_by_time.csv'))
+model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
 
+plot_model_loading_histogram(model_df, out_path)
+plot_model_eviction_histogram(model_df, out_path)
 plot_batch_size_bar_chart(events_df, out_path)
 plot_batch_size_vs_batch_start(events_df, out_path)
 plot_response_time_vs_arrival_time(job_df, out_path)

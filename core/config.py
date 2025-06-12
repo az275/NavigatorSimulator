@@ -1,14 +1,14 @@
 """ --------      Worker Machines Parameters      -------- """
-GPU_MEMORY_SIZE = 14000000  # in KB, 15BG for Tesla T4
+GPU_MEMORY_SIZE = 24000000  # in KB, 24GB for NVIDIA A30
 
-TOTAL_NUM_OF_WORKERS = 140
+TOTAL_NUM_OF_WORKERS = 50
 
 
 """  --------       Workload Parameters    --------  """
 TOTAL_NUM_OF_JOBS = 10000
 
 # The interval between two consecutive job creation events at each external client 
-DEFAULT_CREATION_INTERVAL_PERCLIENT = 100     # ms. 
+DEFAULT_CREATION_INTERVAL_PERCLIENT = 0.2     # ms.
 
 WORKLOAD_DISTRIBUTION = "POISON"  # UNIFORM | POISON | GAMMA
 

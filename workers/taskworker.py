@@ -21,17 +21,34 @@ class TaskWorker(Worker):
         Add task into the local task queue
         """
 
-        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
-        self.add_task_to_queue_history(task, current_time)
-        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_type, task.max_wait_time)
-        return task_end_events
+        self.add_task_to_queue_history(task, current_time) # Update when the task is sent to the worker
+        return self.maybe_start_task_for_type(current_time, task.task_type, task.max_wait_time)
+    
+    def get_next_models(self, lookahead_count: int, current_time: float, info_staleness=0):
+        if lookahead_count <= 0:
+            return []
+        
+        next_models = []
+        task_types_by_arrival, task_queues = self.get_sorted_task_types(current_time)
+        for task_type in task_types_by_arrival:
+            next_model = task_queues[task_type][0].model
+            if next_model != None and next_model not in next_models:
+                next_models.append(next_model)
+            if len(next_models) == lookahead_count:
+                return next_models
 
-    def free_slot(self, current_time):
+        return next_models
+
+    def free_slot(self, current_time, model):
         """ Frees a slot on the worker and attempts to launch another task in that slot. """
-        self.num_free_slots += 1
+        # self.num_free_slots += 1
+        if model != None:
+            self.models_in_use.remove(model)
+        
         get_task_events = self.maybe_start_task_any(current_time)
         return get_task_events
 
@@ -68,7 +85,28 @@ class TaskWorker(Worker):
 
     #  ---------------------------  TASK EXECUTION  ----------------------
 
-    def get_sorted_task_types(self, current_time, info_staleness=0) -> tuple[list[(int, int)], dict[(int, int), list[Task]]]:
+    _CAN_RUN_NOW = 0
+    _CAN_RUN_ON_LOAD = 1
+    _CANNOT_RUN = 2
+
+    def can_run_task(self, current_time: float, model: Model, info_staleness=0) -> int:
+        """
+            Returns _CAN_RUN_NOW if model None, or model is on GPU and not currently in use.
+            Returns _CAN_RUN_ON_LOAD if model can be loaded onto the GPU (either by evicting 
+            existing models not in use or simply using available memory).
+            Returns _CANNOT_RUN otherwise.
+        """
+        if model == None: # doesn't use GPU
+            return self._CAN_RUN_NOW
+        # has >= 1 copies of model in memory that are not currently in use
+        elif self.copies_in_memory(model, current_time) - self.models_in_use.count(model) > 0:
+                return self._CAN_RUN_NOW
+        elif self.can_fit(model.model_size, current_time, info_staleness):
+            return self._CAN_RUN_ON_LOAD
+        else:
+            return self._CANNOT_RUN
+
+    def get_sorted_task_types(self, current_time, info_staleness=0) -> tuple[list[tuple[int, int]], dict[tuple[int, int], list[Task]]]:
         """
             Returns a list of all task_types with at least 1 task queued on this
             worker in order of when they are scheduled to execute (e.g. task queue
@@ -77,105 +115,91 @@ class TaskWorker(Worker):
         """
 
         task_types = self.queue_history.keys()
-        task_queues = { task_type: self.get_queue_history(current_time, task_type, info_staleness) for task_type in task_types }
+        task_queues = {}
+        
         if self.simulation.use_boost:
-            for task_type in task_queues.keys():
-                task_queues[task_type] = sorted(
-                    task_queues[task_type], key=lambda x: x.priority
-                )
-
+            task_queues = { task_type: sorted(self.get_queue_history(current_time, task_type, info_staleness),
+                                              key=lambda task: task.priority)
+                            for task_type in task_types }
+        else:
+            task_queues = { task_type: self.get_queue_history(current_time, task_type, info_staleness) 
+                            for task_type in task_types }
+        
         task_types_by_arrival = sorted(
             filter(lambda task_type: len(task_queues[task_type]) > 0, task_types),
             key=lambda task_type: task_queues[task_type][0].log.task_placed_on_worker_queue_timestamp,
         )
 
         return task_types_by_arrival, task_queues
-
-
-    def maybe_start_task_any(self, current_time):
-        task_types, task_queues = self.get_sorted_task_types(current_time)
-        
-        if self.num_free_slots > 0:
-            for task_type in task_types:
-                first_queued_task = task_queues[task_type][0]
-                if (current_time >= first_queued_task.log.task_placed_on_worker_queue_timestamp):
-                    did_exec_batch, task_end_events = self.maybe_start_task_for_type(
-                        current_time, task_type, first_queued_task.max_wait_time
-                    )
-                    if did_exec_batch:
-                        return task_end_events
-                    # keep checking queue until batch is executed or tasks run out
-        
-        # if no queued tasks, maybe is never called and no wake up events are
-        # appended; in this case worker sleeps until a new task arrives
-        return []
     
+    def _maybe_start_batch(self, task_queue: list[Task], current_time: float) -> list[EventOrders]:
+        # only wake up if existing tasks to avoid congestion since
+        # empty queue will wake up on next task enqueue
+        if len(task_queue) == 0:
+            return []
 
-    def maybe_start_task_for_type(self, current_time, task_type, task_wait_time) -> tuple[bool, list]:
-        """
-            Execute a batch if there are free slots available and at least 1 task queued.
-
-            Returns did_exec_batch : bool, task_end_events : list[Event]
-        """
+        batch_end_events = []
         latest_time = current_time
-        did_exec_batch = False
-
-        task_end_events = []
-        task_list = self.get_queue_history(current_time, task_type, info_staleness=0)
         
-        if self.simulation.use_boost:
-            task_list = sorted(task_list, key=lambda x: x.priority)
-
-        queued_tasks = queue.Queue()
-        [queued_tasks.put(task) for task in task_list]
-
-        # form largest batch < max_batch_size possible
-        batch = []
-        while (not queued_tasks.empty()) and self.num_free_slots > 0 and len(batch) < task_list[0].max_batch_size:
-            task = queued_tasks.get()
-            if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
-                batch.append(task)
+        can_run = self.can_run_task(current_time, task_queue[0].model)
+        if can_run == self._CAN_RUN_ON_LOAD:
+            current_time += self.evict_models_from_GPU_until(
+                current_time, task_queue[0].model.model_size, self.LOOKAHEAD_EVICTION)
         
-        # full batch or max wait time has passed
-        if len(task_list) > 0 and self.num_free_slots > 0:
-            # print(f"[{current_time}] W{self.worker_id}: Batch of {task_list} executing")
+        if can_run == self._CAN_RUN_NOW or can_run == self._CAN_RUN_ON_LOAD:
+            queued_tasks = queue.Queue()
+            [queued_tasks.put(task) for task in task_queue]
 
-            batch_end_events, task_end_time = self.batch_execute(
-                batch, current_time)
+            # form largest batch < max_batch_size possible
+            batch = []
+            while (not queued_tasks.empty()) and len(batch) < task_queue[0].max_batch_size:
+                task = queued_tasks.get()
+                if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
+                    batch.append(task)
             
-            # rm all tasks in batch
-            for task in batch:
-                self.rm_task_in_queue_history(task, current_time)
-
-            latest_time = task_end_time
-
-            did_exec_batch = True
-            task_end_events += batch_end_events
+            if len(batch) > 0:
+                batch_end_events, task_end_time = self.batch_execute(batch, current_time)
+                for task in batch: # rm all tasks in batch
+                    self.rm_task_in_queue_history(task, current_time)
+                latest_time = task_end_time
 
         # track next wake up time so old wake ups can be skipped
-        next_check_time = latest_time + task_wait_time
-        self.next_check_times[task_type] = next_check_time
+        next_check_time = latest_time + task_queue[0].max_wait_time
+        self.next_check_times[task_queue[0].task_type] = next_check_time
 
         # if idle, check again in wait time
         # NOTE: for some reason, appending to task_end_events does not always
         # lead to event being enqueued; thus we enqueue directly to sim queue here
-        self.simulation.event_queue.put(
-            EventOrders(
-                next_check_time,
-                WorkerWakeUpEvent(self, task_type, task_wait_time)
-            )
-        )
+        self.simulation.event_queue.put(EventOrders(
+            next_check_time,
+            WorkerWakeUpEvent(self, 
+                                task_queue[0].task_type, 
+                                task_queue[0].max_wait_time)))
+        
+        return batch_end_events
+    
+    def maybe_start_task_any(self, current_time):
+        all_end_events = []
+        task_types, task_queues = self.get_sorted_task_types(current_time)
+        for task_type in task_types:
+            all_end_events += self._maybe_start_batch(task_queues[task_type], current_time)
+        return all_end_events
+    
+    def maybe_start_task_for_type(self, current_time, task_type, task_wait_time) -> tuple[bool, list]:
+        if self.simulation.use_boost:
+            task_queue = sorted(self.get_queue_history(current_time, task_type),
+                                key=lambda task: task.priority)
+        else:
+            task_queue = self.get_queue_history(current_time, task_type)
+        return self._maybe_start_batch(task_queue, current_time)
 
-        return did_exec_batch, task_end_events
-
-    # modify to handle a batch of tasks:
-    # need to model batch execution duration
-    # transfer to next step should handle a list of tasks
     def batch_execute(self, tasks, current_time):
         assert(len(tasks) > 0) # cannot launch empty batch
 
         self.involved = True
-        self.num_free_slots -= 1
+        if tasks[0].model != None:
+            self.models_in_use.append(tasks[0].model)
+        
         model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
         batch_index = 0
@@ -204,11 +228,22 @@ class TaskWorker(Worker):
             task.log.task_execution_start_timestamp = current_time + model_fetch_time
             task.log.task_execution_end_timestamp = task_end_time
 
+        self.simulation.batch_exec_log.loc[len(self.simulation.batch_exec_log)] = {
+            "time": current_time,
+            "worker_id": self.worker_id,
+            "workflow_id": tasks[0].task_type[0],
+            "task_id": tasks[0].task_id,
+            "batch_size": len(tasks),
+            "model_exec_time": tasks[0].batch_exec_time[batch_index],
+            "batch_exec_time": model_fetch_time + tasks[0].batch_exec_time[batch_index],
+            "job_ids": job_ids
+        }
+
         task_end_events.append(EventOrders(current_time + model_fetch_time, BatchStartEvent(
             self, job_ids=job_ids, task_type=tasks[0].task_type
         )))
         task_end_events.append(EventOrders(task_end_time, BatchEndEvent(
-            self, job_ids=job_ids, task_type=tasks[0].task_type
+            self, tasks[0].model, job_ids=job_ids, task_type=tasks[0].task_type
         )))
 
         return task_end_events, task_end_time
