@@ -2,7 +2,8 @@ from pickle import NONE
 from core.config import *
 from core.network import *
 from core.config import *
-import sys
+
+import pandas as pd
 
 
 class Worker(object):
@@ -18,6 +19,9 @@ class Worker(object):
         # {time-> list of model objects} : [ (time1,[model0,model1,]), (time2,[model1,...]),...]
         self.GPU_memory_models_history = []
         self.models_in_use = [] # models in use by a currently executing batch
+
+        self.model_history_log = pd.DataFrame(columns=["start_time", "end_time",
+                                                       "model_id", "placed_or_evicted"])
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -66,17 +70,33 @@ class Worker(object):
         return w_models.count(model)
 
     def can_fit(self, min_required_memory: int, current_time: float, info_staleness=0) -> bool:
+        # models currently being fetched = models in use - models loaded on GPU
+        loaded_models = self.get_model_history(current_time, info_staleness)
+        fetching_models = []
+        for model in self.models_in_use:
+            if model in loaded_models:
+                loaded_models.remove(model)
+            else:
+                fetching_models.append(model)
+
+        # loaded models + models currently being fetched
+        used_memory = self.used_GPUmemory(current_time, info_staleness=info_staleness) + \
+                      sum([model.model_size for model in fetching_models])
+        
         # if currently available memory >= min_required_memory
-        used_memory = self.used_GPUmemory(current_time, info_staleness=info_staleness)
         if GPU_MEMORY_SIZE - used_memory >= min_required_memory:
             return True
         
+        # if no batches/current batches do not use GPU
         if self.models_in_use == [] and min_required_memory <= GPU_MEMORY_SIZE:
             return True
         
-        # if evicting all except current required models can make enough space
-        if GPU_MEMORY_SIZE - sum(map(lambda m: m.model_size, self.models_in_use)) >= min_required_memory:
+        # if evicting all except current required models & models being fetched can make enough space
+        if GPU_MEMORY_SIZE - sum(map(lambda m: m.model_size, self.models_in_use)) - \
+            sum(map(lambda m: m.model_size, fetching_models)) >= min_required_memory:
             return True
+        
+        return False
 
     def fetch_model(self, model, current_time):
         """
@@ -92,13 +112,21 @@ class Worker(object):
         # case1: if it is in local GPU already
         if self.does_have_model(model, current_time):
             return 0
+        
         fetch_time = 0
         fetch_time = SameMachineCPUtoGPU_delay(model.model_size)
+
+        self.model_history_log.loc[len(self.model_history_log)] = {
+            "start_time": current_time,
+            "end_time": current_time + fetch_time, 
+            "model_id": model.model_id,
+            "placed_or_evicted": "placed"
+        }
+
         self.simulation.metadata_service.add_model_cached_location(
             model, self.worker_id, current_time + fetch_time)
         self.add_model_to_memory_history(model, current_time + fetch_time)
-        eviction_time = self.evict_model_from_GPU(current_time + fetch_time)
-        return fetch_time + eviction_time
+        return fetch_time
     
     # NOTE: REQUIRED OVERRIDE
     def get_next_models(self, lookahead_count: int, current_time: float, info_staleness=0):
@@ -116,6 +144,13 @@ class Worker(object):
                     model, self.worker_id, current_time)
                 self.rm_model_in_memory_history(model, current_time)
                 eviction_duration += SameMachineGPUtoCPU_delay(model.model_size)
+
+                self.model_history_log.loc[len(self.model_history_log)] = {
+                    "start_time": current_time,
+                    "end_time": current_time + eviction_duration, 
+                    "model_id": model.model_id,
+                    "placed_or_evicted": "evicted"
+                }
         return eviction_duration
 
 
@@ -148,30 +183,6 @@ class Worker(object):
                     return self._evict_models_from_GPU(models_to_evict, current_time)
         
         return 0
-    
-
-    def evict_model_from_GPU(self, current_time):
-        """
-        Do nothing if current cached models didn't exceed the GPU memory
-        remove this information to 2 histories:  
-            1. model_history on worker
-            2. cache_history on metadata_service
-        """
-        models_in_GPU = self.get_model_history(current_time, info_staleness=0)
-        models_total_size = 0
-        for model in models_in_GPU:
-            models_total_size += model.model_size
-        eviction_index = 0
-        eviction_duration = 0
-        while (models_total_size > GPU_MEMORY_SIZE):
-            rm_model = models_in_GPU[eviction_index]
-            self.simulation.metadata_service.rm_model_cached_location(
-                rm_model, self.worker_id, current_time)
-            self.rm_model_in_memory_history(rm_model, current_time)
-            models_total_size -= rm_model.model_size
-            eviction_index += 1
-            eviction_duration += SameMachineGPUtoCPU_delay(rm_model.model_size)
-        return eviction_duration
 
     # ------------------------- cached model history update helper functions ---------------
     def add_model_to_memory_history(self, model, current_time):
