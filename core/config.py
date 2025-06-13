@@ -1,5 +1,5 @@
 """ --------      Worker Machines Parameters      -------- """
-GPU_MEMORY_SIZE = 14000000  # in KB, 15BG for Tesla T4
+GPU_MEMORY_SIZE = 24000000  # in KB, 24GB for NVIDIA A30
 
 TOTAL_NUM_OF_WORKERS = 140
 
