@@ -6,12 +6,13 @@ from core.model import Model
 
 class ModelState:
     PLACED = 0
-    IN_FETCH = 1
-    IN_EVICT = 2
+    PRE_FETCH = 1 # reserved for a model that will be fetched
+    IN_FETCH = 2
+    IN_EVICT = 3
 
-    def __init__(self, model: Model, state: int, is_reserved_for_batch=True):
-        assert(state in [self.PLACED, self.IN_FETCH, self.IN_EVICT])
+    def __init__(self, model: Model, state: int, is_reserved_for_batch=True, size=0):
         self.model = model
+        self.size = size if size > 0 else model.model_size
         self.state = state
         self.is_reserved_for_batch = is_reserved_for_batch
 
@@ -19,7 +20,7 @@ class ModelState:
         return type(value) == ModelState and self.model == value.model and self.state == value.state
     
     def __str__(self):
-        return f"<[{self._state_to_str()}] [{"NOT " if not self.is_reserved_for_batch else ""}IN USE] Model ID: {self.model.model_id}>"
+        return f"<[{self._state_to_str()}] [{"NOT " if not self.is_reserved_for_batch else ""}IN USE] Model ID: {self.model.model_id if self.model else -1}>"
     
     def __repr__(self):
         return self.__str__()
@@ -28,6 +29,7 @@ class ModelState:
         if self.state == self.PLACED: return "Placed"
         elif self.state == self.IN_FETCH: return "Fetching"
         elif self.state == self.IN_EVICT: return "Evicting"
+        elif self.state == self.PRE_FETCH: return "Reserved"
 
 
 class GPUState(object):
@@ -38,15 +40,14 @@ class GPUState(object):
     def reserved_memory(self, time: float) -> float:
         """
             Returns the total GPU memory that is currently in use, either
-            for currently placed models, models that are being fetched, or
-            models that are being evicted.
+            for currently placed models, models that are being fetched,
+            models that are being evicted, or models that will be fetched.
         """
-        return sum(state.model.model_size for state in self.state_at(time))
+        return sum(state.size for state in self.state_at(time))
     
     def available_memory(self, time: float) -> float:
         """
-            Returns total GPU memory not occupied by a model, reserved for
-            a model being fetched, or used by a model being evicted.
+            Returns total GPU memory that is not reserved (see reserved_memory).
         """
         return GPU_MEMORY_SIZE - self.reserved_memory(time)
 
@@ -64,7 +65,7 @@ class GPUState(object):
         """
         # cannot use space occupied by models currently being fetched/evicted or used
         return (self.available_memory(time) + \
-                sum(state.model.model_size for state in self.state_at(time) 
+                sum(state.size for state in self.state_at(time) 
                     if state.state == ModelState.PLACED and not state.is_reserved_for_batch)) >= model.model_size
     
     def _insert_state_marker(self, marker_time: float, at_marker_modify, post_marker_modify):
@@ -122,7 +123,13 @@ class GPUState(object):
                                   lambda t, states: states.append(ModelState(model, ModelState.IN_FETCH)) if t < fetch_end_time else None)
 
     
-    def evict_model(self, model: Model, start_time: float, evict_time: float):
+    def evict_model(self, model: Model, start_time: float, evict_time: float, reserve_until=-1):
+        """
+            Evicts [model] starting at [start_time] in [evict_time] time.
+            Reserves evicted space until [reserve_until]. This prevents other models
+            from being loaded in space that may be intended to fetch a specific model.
+            Does not reserve if [reserve_until] < 0.
+        """
         assert(model in self.placed_models(start_time))
 
         eviction_end_time = start_time + evict_time
@@ -147,7 +154,33 @@ class GPUState(object):
         # add eviction start marker
         self._insert_state_marker(start_time, _begin_model_eviction, 
                                   lambda t, states: _begin_model_eviction(t, states) if t < eviction_end_time else None)
+        
+        if reserve_until >= 0:
+            self.reserve_model_space(model, model.model_size, eviction_end_time, reserve_until)
+        
+    def reserve_model_space(self, model: Model, size: float, start_time: float, end_time: float):
+        """
+            Reserves [size] extra space for [model] from [start_time] to [end_time].
+            Used during evictions when additional space must be reserved in addition
+            to space from evicted or currently evicting models for when [model] is
+            fetched. Prevents other models from being fetched in space made for
+            [model].
+        """
+        assert(size > 0)
 
+        # mark reservation start
+        self._insert_state_marker(start_time,
+                                  lambda _, states: states.append(ModelState(model, ModelState.PRE_FETCH, size=size)),
+                                  lambda t, states: states.append(ModelState(model, ModelState.PRE_FETCH, size=size)) if t < end_time else None)
+        
+        def _remove_reservation(timestamp, states):
+            for state in states:
+                if state.model == model and state.state == ModelState.PRE_FETCH and state.size == size:
+                    states.remove(state)
+                    return
+
+        # mark reservation end
+        self._insert_state_marker(end_time, _remove_reservation, lambda _, states: None)
 
     def state_at(self, time: float) -> list[ModelState]:
         for (timestamp, states) in self._model_states[::-1]:
@@ -168,6 +201,11 @@ class GPUState(object):
         return any(state.model == model and not state.is_reserved_for_batch for state in self.placed_model_states(time))
     
     def reserve_idle_copy(self, model: Model, time: float):
+        """
+            If there is an idle copy of [model], reserve it to execute a batch
+            starting from [time]. When execution finishes, a call to
+            [release_busy_copy] is required.
+        """
         assert(self.does_have_idle_copy(model, time))
 
         def _occupy_one_copy(timestamp, states):
@@ -183,6 +221,9 @@ class GPUState(object):
         self._insert_state_marker(time, _occupy_one_copy, _occupy_one_copy)
 
     def release_busy_copy(self, model: Model, time: float):
+        """
+            Releases a previously occupied/reserved copy of [model] at [time].
+        """
         def _release_one_copy(timestamp, states):
             for i, state in enumerate(states):
                 if state.model == model and state.state == ModelState.PLACED and state.is_reserved_for_batch:

@@ -80,25 +80,6 @@ class Worker(object):
         """
         return []
 
-    def _evict_models_from_GPU(self, models_to_evict, current_time):
-        # NOTE: Assumes any number of models can be evicted concurrently!
-        eviction_duration = 0
-        for model in models_to_evict:
-            self.simulation.metadata_service.rm_model_cached_location(
-                model, self.worker_id, current_time)
-            
-            evict_time = SameMachineGPUtoCPU_delay(model.model_size)
-            self.GPU_state.evict_model(model, current_time, evict_time)
-            eviction_duration = max(evict_time, eviction_duration)
-
-            self.model_history_log.loc[len(self.model_history_log)] = {
-                "start_time": current_time,
-                "end_time": current_time + eviction_duration, 
-                "model_id": model.model_id,
-                "placed_or_evicted": "evicted"
-            }
-        return eviction_duration
-
     LOOKAHEAD_EVICTION = 0
     FCFS_EVICTION = 1
 
@@ -126,8 +107,31 @@ class Worker(object):
                 curr_memory += state.model.model_size
                 models_to_evict.append(state.model)
                 if curr_memory >= min_required_memory:
-                    return self._evict_models_from_GPU(models_to_evict, current_time)
+                    # NOTE: Assumes models can be evicted concurrently
+                    model_evict_times = list(map(lambda m: SameMachineGPUtoCPU_delay(m.model_size), models_to_evict))
+                    eviction_duration = max(model_evict_times)
+                    full_eviction_end = current_time + eviction_duration
 
+                    # must reserve space to prevent other models from loading in space created here
+                    extra_to_reserve = min_required_memory - sum(m.model_size for m in models_to_evict)
+                    if extra_to_reserve > 0:
+                        self.GPU_state.reserve_model_space(None, extra_to_reserve, current_time, full_eviction_end)
+
+                    for i in range(len(models_to_evict)):
+                        self.simulation.metadata_service.rm_model_cached_location(
+                            models_to_evict[i], self.worker_id, current_time)
+                        self.GPU_state.evict_model(models_to_evict[i], 
+                                                   current_time, 
+                                                   model_evict_times[i],
+                                                   reserve_until=full_eviction_end)
+                        
+                        self.model_history_log.loc[len(self.model_history_log)] = {
+                            "start_time": current_time,
+                            "end_time": current_time + eviction_duration, 
+                            "model_id": models_to_evict[i].model_id,
+                            "placed_or_evicted": "evicted"
+                        }
+                    return eviction_duration
         return 0
 
     # ------------------------- cached model history update helper functions ---------------
