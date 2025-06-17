@@ -98,9 +98,9 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
         
         available_memory = GPU_MEMORY_SIZE
         if consider_cache:
-            available_memory = workers[worker_id].used_GPUmemory(current_time, \
-                                                                 info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                 requiring_worker_id=initial_worker_id)
+            available_memory = workers[worker_id].GPU_state.available_memory(current_time)
+                                                                 # info_staleness=PLACEMENT_INFORMATION_STALENESS, \
+                                                                 # requiring_worker_id=initial_worker_id)
         workers_available_memory[worker_id] = available_memory
         
     # Select the best worker for each task based on their ranking from high to low
@@ -128,13 +128,12 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
             model_fetch_time = 0
             cur_fetching_model_size = 0
             if consider_cache:
-                models_in_cur_worker = workers[cur_worker_id].get_model_history(current_time, \
-                                                                             info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                             requiring_workerid= initial_worker_id)
-                if cur_task.model is not None and cur_task.model not in models_in_cur_worker:
+                # TODO: info staleness
+                if cur_task.model is not None and \
+                    not workers[cur_worker_id].GPU_state.does_have_idle_copy(cur_task.model, current_time):
                     model_fetch_time = SameMachineCPUtoGPU_delay(cur_task.model.model_size)
                     cur_fetching_model_size = cur_task.model.model_size
-                    if workers_available_memory[cur_worker_id] + cur_task.model.model_size > GPU_MEMORY_SIZE:
+                    if not workers[cur_worker_id].GPU_state.can_fetch_model(cur_task.model, current_time):
                         # double model fetch time due to the overhead from model_eviction
                         model_fetch_time += model_fetch_time
             cur_earliest_start_time += model_fetch_time
