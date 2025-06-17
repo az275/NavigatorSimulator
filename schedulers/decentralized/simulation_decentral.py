@@ -51,8 +51,10 @@ class Simulation_decentral(Simulation):
         while self.remaining_jobs > 0:
             cur_event = self.event_queue.get()
 
-            if type(cur_event.event) != WorkerWakeUpEvent or cur_event.event.will_run(cur_event.current_time):
-                self.event_log.loc[len(self.event_log)] = [cur_event.current_time, cur_event.to_string()]
+            print(cur_event.to_string())
+            print(f"Jobs left: {self.remaining_jobs}")
+
+            self.event_log.loc[len(self.event_log)] = [cur_event.current_time, cur_event.to_string()]
 
             assert cur_event.current_time >= last_time
             last_time = cur_event.current_time
@@ -61,5 +63,3 @@ class Simulation_decentral(Simulation):
                 last_time = cur_event.current_time
                 self.event_queue.put(new_event)
         self.run_finish(last_time, by_job_type=True)
-        
-        
