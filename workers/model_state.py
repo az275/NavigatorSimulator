@@ -20,7 +20,7 @@ class ModelState:
         return type(value) == ModelState and self.model == value.model and self.state == value.state
     
     def __str__(self):
-        return f"<[{self._state_to_str()}] [{"NOT " if not self.is_reserved_for_batch else ""}IN USE] Model ID: {self.model.model_id if self.model else -1}>"
+        return f"<[{self._state_to_str()}] [{'NOT ' if not self.is_reserved_for_batch else ''}IN USE] Model ID: {self.model.model_id if self.model else -1}>"
     
     def __repr__(self):
         return self.__str__()
