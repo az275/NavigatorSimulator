@@ -105,6 +105,10 @@ class TaskWorker(Worker):
         if model == None or self.GPU_state.does_have_idle_copy(model, current_time):
             return self._CAN_RUN_NOW
         
+        # cannot load additional copies of the same model
+        if any(map(lambda s: s.model == model, self.GPU_state.state_at(current_time))):
+            return self._CANNOT_RUN
+        
         if self.GPU_state.can_fetch_model(model, current_time):
             return self._CAN_RUN_NOW
         
