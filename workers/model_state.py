@@ -65,7 +65,7 @@ class GPUState(object):
         """
         # cannot use space occupied by models currently being fetched/evicted or used
         return (self.available_memory(time) + \
-                sum(state.size for state in self.state_at(time) 
+                sum(state.size for state in self.state_at(time)
                     if state.state == ModelState.PLACED and not state.is_reserved_for_batch)) >= model.model_size
     
     def _insert_state_marker(self, marker_time: float, at_marker_modify, post_marker_modify):
@@ -113,12 +113,12 @@ class GPUState(object):
             return
         
         # add fetch end marker
-        self._insert_state_marker(fetch_end_time, 
+        self._insert_state_marker(fetch_end_time,
                                   lambda _, states: states.append(ModelState(model, ModelState.PLACED)),
                                   lambda _, states: states.append(ModelState(model, ModelState.PLACED)))
         
         # add fetch start marker
-        self._insert_state_marker(start_time, 
+        self._insert_state_marker(start_time,
                                   lambda _, states: states.append(ModelState(model, ModelState.IN_FETCH)),
                                   lambda t, states: states.append(ModelState(model, ModelState.IN_FETCH)) if t < fetch_end_time else None)
 
@@ -144,19 +144,19 @@ class GPUState(object):
 
         self._insert_state_marker(eviction_end_time, _remove_model, _remove_model)
 
-        def _begin_model_eviction(timestamp, states):
-            for state in states:
-                if state.state == ModelState.PLACED and state.model == model and not state.is_reserved_for_batch:
-                    state.state = ModelState.IN_EVICT
-                    return
-            assert(False) # should not happen: no model exists to evict
+        # def _begin_model_eviction(timestamp, states):
+        #     for state in states:
+        #         if state.state == ModelState.PLACED and state.model == model and not state.is_reserved_for_batch:
+        #             state.state = ModelState.IN_EVICT
+        #             return
+        #     assert(False) # should not happen: no model exists to evict
 
         # add eviction start marker
-        self._insert_state_marker(start_time, _begin_model_eviction, 
-                                  lambda t, states: _begin_model_eviction(t, states) if t < eviction_end_time else None)
+        # self._insert_state_marker(start_time, _begin_model_eviction,
+        #                           lambda t, states: _begin_model_eviction(t, states) if t < eviction_end_time else None)
         
-        if reserve_until >= 0:
-            self.reserve_model_space(model, model.model_size, eviction_end_time, reserve_until)
+        # if reserve_until >= 0:
+        #     self.reserve_model_space(model, model.model_size, eviction_end_time, reserve_until)
         
     def reserve_model_space(self, model: Model, size: float, start_time: float, end_time: float):
         """
@@ -193,7 +193,7 @@ class GPUState(object):
     
     def placed_model_states(self, time: float) -> list[ModelState]:
         states = self.state_at(time)
-        if len(states) == 0: 
+        if len(states) == 0:
             return []
         return [state for state in states if state.state == ModelState.PLACED]
     
