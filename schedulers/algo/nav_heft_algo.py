@@ -91,6 +91,7 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
             task_id: current_time + (workers[worker_id].get_task_queue_waittime(
                 current_time,
                 (job.job_type_id, task_id),
+                job.tasks[task_id].model.model_size if job.tasks[task_id].model else 0,
                 info_staleness=LOAD_INFORMATION_STALENESS,
                 requiring_worker_id=initial_worker_id) if consider_load else 0)
             for task_id in sorted_tasks

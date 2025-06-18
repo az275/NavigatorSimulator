@@ -194,7 +194,7 @@ class BatchEndEvent(Event):
         self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time)
+        return self.worker.free_slot(current_time, self.task_type)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
@@ -233,36 +233,6 @@ class JobEndEvent(Event):
 
     def to_string(self):
         return "[Job End] ==="
-
-
-class WorkerWakeUpEvent(Event):
-    """
-    Event to signify that max_wait_time has passed and worker should
-    check task queue.
-    """
-
-    def __init__(self, worker, task_id, task_max_wait_time):
-        self.worker = worker
-        self.task_id = task_id
-        self.task_max_wait_time = task_max_wait_time
-
-    def run(self, current_time):
-        if self.will_run(current_time):
-            _, task_end_events = self.worker.maybe_start_task_for_type(
-                current_time, self.task_id, self.task_max_wait_time
-            )
-            return task_end_events
-        return []
-
-    def to_string(self):
-        return f"[Worker (id: {self.worker.worker_id}) Wake Up (task id: {self.task_id})]"
-    
-    def will_run(self, current_time):
-        # skip current wake up if a later wake up has been scheduled
-        if self.task_id in self.worker.next_check_times:
-            return current_time >= self.worker.next_check_times[self.task_id]
-        return True # if no batch has been run yet, wake up should be executed
-
 
 class EventOrders:
     """

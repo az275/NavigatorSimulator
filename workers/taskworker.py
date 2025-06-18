@@ -14,26 +14,34 @@ class TaskWorker(Worker):
         # keep track of the queue information at time:  [ (time1,[task0,task1,]), (time2,[task1,...]),...]
         self.queue_history = {}
         self.involved = False
-        self.next_check_times = {}
+
+        self.available_memory = GPU_MEMORY_SIZE
+        self.assigned_task_types = set()
 
     def add_task(self, current_time, task):
         """
         Add task into the local task queue
         """
+        if task.task_type not in self.assigned_task_types:
+            if task.model != None and self.available_memory < task.model.model_size:
+                assert(False) # cannot be assigned!
+            else:
+                self.available_memory -= task.model.model_size if task.model else 0
+                self.assigned_task_types.add(task.task_type)
 
         # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
         self.add_task_to_queue_history(task, current_time)
-        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_type, task.max_wait_time)
+        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_type)
         return task_end_events
 
-    def free_slot(self, current_time):
+    def free_slot(self, current_time, task_type):
         """ Frees a slot on the worker and attempts to launch another task in that slot. """
         self.num_free_slots += 1
-        get_task_events = self.maybe_start_task_any(current_time)
-        return get_task_events
+        task_end_events = self.maybe_start_task_any(current_time)
+        return task_end_events
 
     #  --------------------------- DECENTRALIZED WORKER SCHEDULING  ----------------------
     def schedule_job_heft(self, current_time, job):
@@ -95,7 +103,7 @@ class TaskWorker(Worker):
                 first_queued_task = task_queues[task_type][0]
                 if (current_time >= first_queued_task.log.task_placed_on_worker_queue_timestamp):
                     did_exec_batch, task_end_events = self.maybe_start_task_for_type(
-                        current_time, task_type, first_queued_task.max_wait_time
+                        current_time, task_type
                     )
                     if did_exec_batch:
                         return task_end_events
@@ -106,13 +114,12 @@ class TaskWorker(Worker):
         return []
     
 
-    def maybe_start_task_for_type(self, current_time, task_type, task_wait_time) -> tuple[bool, list]:
+    def maybe_start_task_for_type(self, current_time, task_type) -> tuple[bool, list]:
         """
             Execute a batch if there are free slots available and at least 1 task queued.
 
             Returns did_exec_batch : bool, task_end_events : list[Event]
         """
-        latest_time = current_time
         did_exec_batch = False
 
         task_end_events = []
@@ -143,24 +150,8 @@ class TaskWorker(Worker):
             for task in batch:
                 self.rm_task_in_queue_history(task, current_time)
 
-            latest_time = task_end_time
-
             did_exec_batch = True
             task_end_events += batch_end_events
-
-        # track next wake up time so old wake ups can be skipped
-        next_check_time = latest_time + task_wait_time
-        self.next_check_times[task_type] = next_check_time
-
-        # if idle, check again in wait time
-        # NOTE: for some reason, appending to task_end_events does not always
-        # lead to event being enqueued; thus we enqueue directly to sim queue here
-        self.simulation.event_queue.put(
-            EventOrders(
-                next_check_time,
-                WorkerWakeUpEvent(self, task_type, task_wait_time)
-            )
-        )
 
         return did_exec_batch, task_end_events
 
@@ -338,12 +329,18 @@ class TaskWorker(Worker):
     def get_queue_history(self, current_time, task_type, info_staleness=0) -> list:
         return self.get_history(self.queue_history[task_type], current_time, info_staleness)
 
-    def get_task_queue_waittime(self, current_time, task_type, info_staleness=0, requiring_worker_id=None):
+    def get_task_queue_waittime(self, current_time, task_type, model_size, info_staleness=0, requiring_worker_id=None):
         if requiring_worker_id != None and requiring_worker_id != self.worker_id:
             info_staleness = 0
 
-        task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
+        if task_type not in self.assigned_task_types:
+            if self.available_memory < model_size:
+                return np.inf # cannot be assigned!
+            else:
+                self.available_memory -= model_size
+                self.assigned_task_types.add(task_type)
 
+        task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
         wait_time = 0
         for queued_task_type in task_types:
             for task in task_queues[queued_task_type]:
