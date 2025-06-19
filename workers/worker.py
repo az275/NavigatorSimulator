@@ -11,13 +11,15 @@ from workers.model_state import *
 class Worker(object):
     """ Abstract class representing workers. """
 
-    def __init__(self, simulation, num_free_slots, worker_id):
+    def __init__(self, simulation, worker_id, total_memory):
+        assert(total_memory in [24, 12, 6])
+
         self.worker_id = worker_id
         self.simulation = simulation
-        self.num_free_slots = num_free_slots
-        self.current_batch = [] # track the currently executing batch (if any)
+        self.total_memory = total_memory
+        
         self.GPU_memory_models = []
-        self.GPU_state = GPUState()
+        self.GPU_state = GPUState(total_memory * (10**6))
 
         self.model_history_log = pd.DataFrame(columns=["start_time", "end_time",
                                                        "model_id", "placed_or_evicted"])

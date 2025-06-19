@@ -7,8 +7,8 @@ from schedulers.algo.nav_heft_algo import *
 
 
 class TaskWorker(Worker):
-    def __init__(self, simulation, num_free_slots, worker_id):
-        super().__init__(simulation, num_free_slots, worker_id)
+    def __init__(self, simulation, worker_id, total_memory):
+        super().__init__(simulation, worker_id, total_memory)
         # {task_obj1:[(preq_task_id0,arrival_time0), (preq_taks_id0, arrival_time1), ...], task2:[( ...],}
         self.waiting_tasks_buffer = defaultdict(lambda: [])
         # keep track of the queue information at time:  [ (time1,[task0,task1,]), (time2,[task1,...]),...]

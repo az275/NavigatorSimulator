@@ -12,6 +12,9 @@ from core.external_client import *
 from core.events import *
 import pandas as pd
 
+import gurobipy as gp
+from gurobipy import GRB
+
 
 class Simulation(object):
     def __init__(
@@ -51,14 +54,94 @@ class Simulation(object):
 
     def initialize_model_placement_at_workers(self):
         """Initial object placement to home node"""
-        # Hashing Scheme: associate every Model to a home Node (randomly)
         all_models = list(self.metadata_service.job_type_models.values())
-        flattened_all_models = [
-            model for sublist_models in all_models for model in sublist_models]
-        rand_worker_indices = np.random.choice(range(self.total_workers),
-                                               size=len(flattened_all_models), replace=True)
-        for worker_index, model in zip(rand_worker_indices, flattened_all_models):
-            self.workers[worker_index].initial_model_placement(model)
+        
+        models = ["0,2", "1", "3"] # index in all_models[0]
+        configs = [6, 12, 24]
+        nodes = [i for i in range(TOTAL_NUM_OF_NODES)]
+
+        throughput = {
+            "0,2": {6: 200, 12: 240, 24: 270},
+            "1": {24: 45},
+            "3": {6: 55, 12: 55, 24: 70},
+        }
+        valid_layouts = [[24], [12, 12], [12, 6, 6], [6, 6, 6, 6]]
+
+        def solve_leximin(locked_lower_bounds):
+            m = gp.Model("Leximin_Level")
+            x, y = {}, {}
+            T_m = {}
+            Z = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name="Z")
+
+            for model in models:
+                for node in nodes:
+                    for c in configs:
+                        if c in throughput[model]:
+                            x[model, node, c] = m.addVar(vtype=GRB.INTEGER, name=f"x_{model}_{node}_{c}")
+
+            for node in nodes:
+                for lid, layout in enumerate(valid_layouts):
+                    y[node, lid] = m.addVar(vtype=GRB.BINARY, name=f"y_{node}_{lid}")
+
+            for model in models:
+                T_m[model] = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"T_{model}")
+                m.addConstr(
+                    T_m[model] == gp.quicksum(
+                        x[model, node, c] * throughput[model][c]
+                        for node in nodes for c in configs if (model, node, c) in x
+                    )
+                )
+
+                if model in locked_lower_bounds:
+                    m.addConstr(T_m[model] >= locked_lower_bounds[model])
+                else:
+                    m.addConstr(Z <= T_m[model])
+
+                m.addConstr(gp.quicksum(
+                    x[model, node, c] for node in nodes for c in configs if (model, node, c) in x
+                ) >= 1)
+
+            for node in nodes:
+                m.addConstr(gp.quicksum(y[node, lid] for lid in range(len(valid_layouts))) == 1)
+                for c in configs:
+                    m.addConstr(
+                        gp.quicksum(
+                            x[model, node, c] for model in models if (model, node, c) in x
+                        ) <= gp.quicksum(
+                            y[node, lid] * layout.count(c)
+                            for lid, layout in enumerate(valid_layouts)
+                        )
+                    )
+
+            m.setObjective(Z, GRB.MAXIMIZE)
+            m.setParam("OutputFlag", 0)
+            m.optimize()
+
+            throughput_vals = {model: T_m[model].X for model in models}
+            assignment = {
+                (model, node, c): int(x[model, node, c].X)
+                for model in models for node in nodes for c in configs
+                if (model, node, c) in x and x[model, node, c].X > 0.5
+            }
+            return throughput_vals, assignment
+
+        # Leximin loop
+        locked = {}
+        for _ in range(len(models)):
+            T_vals, assignment = solve_leximin(locked)
+            unlocked = [m for m in models if m not in locked]
+            if not unlocked:
+                break
+            min_model = min(unlocked, key=lambda m: T_vals[m])
+            locked[min_model] = T_vals[min_model]
+
+        worker_configs = []
+        for (model_idxs, node, c), count in assignment.items():
+            models = list(map(lambda idx: all_models[0][int(idx)], model_idxs.split(",")))
+            for _ in range(count):
+                worker_configs.append((c, models))
+            print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
+        return worker_configs
 
     def initialize_external_clients(self):
         for job_type_id in self.job_types_list:
