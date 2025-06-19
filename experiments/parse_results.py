@@ -53,6 +53,8 @@ def plot_batch_size_vs_batch_start(event_df, out_path):
         batch_start_events_for_type = batch_start_events[batch_start_events["event"].str.contains(f"Task \({task_type}\)")]
         batch_sizes = batch_start_events_for_type["event"].str.extract(r"Jobs ([0-9|,]+)")[0].str.count(f'[0-9]+')
         
+        print(f"{task_type} MEAN: {batch_sizes.mean()}")
+        
         plt.scatter(
             batch_start_events_for_type["time"],
             batch_sizes,
