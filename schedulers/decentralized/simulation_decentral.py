@@ -28,10 +28,18 @@ class Simulation_decentral(Simulation):
 
 
     def initialize_workers(self):
-        if(self.job_split == "PER_TASK"):
+        if self.job_split == "PER_TASK":
+            all_models = list(self.metadata_service.job_type_models.values())[0]
+            initial_models = [[all_models[1]],
+                              [all_models[1]],
+                              [all_models[1]],
+                              [all_models[3],all_models[3],all_models[3],all_models[0],all_models[2]]]
+
             for i in range(self.total_workers):
                 self.workers.append(TaskWorker(self, self.slots_per_worker, i))
-            # self.initialize_model_placement_at_workers()
+                for model in initial_models[i]:
+                    self.metadata_service.add_model_cached_location(model, i, 0)
+                    self.workers[-1].add_model_to_memory_history(model, 0)
 
 
     def add_job_completion_time(self, job_id, task_id, completion_time):
@@ -51,8 +59,8 @@ class Simulation_decentral(Simulation):
         while self.remaining_jobs > 0:
             cur_event = self.event_queue.get()
 
-            # print(cur_event.to_string())
-            # print(self.remaining_jobs)
+            print(cur_event.to_string())
+            print(self.remaining_jobs)
             
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, cur_event.to_string()]
 

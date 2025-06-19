@@ -22,14 +22,7 @@ class TaskWorker(Worker):
         """
         Add task into the local task queue
         """
-        if task.task_type not in self.assigned_task_types:
-            if task.model != None and self.available_memory < task.model.model_size:
-                assert(False) # cannot be assigned!
-            else:
-                self.available_memory -= task.model.model_size if task.model else 0
-                self.assigned_task_types.add(task.task_type)
-
-        # print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
 
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
@@ -333,12 +326,10 @@ class TaskWorker(Worker):
         if requiring_worker_id != None and requiring_worker_id != self.worker_id:
             info_staleness = 0
 
-        if task_type not in self.assigned_task_types:
-            if self.available_memory < model_size:
-                return np.inf # cannot be assigned!
-            else:
-                self.available_memory -= model_size
-                self.assigned_task_types.add(task_type)
+        required_id = WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
+        if required_id >= 0 and \
+            all(m.model_id != required_id for m in self.get_model_history(current_time, info_staleness=0)):
+            return np.inf
 
         task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
         wait_time = 0
