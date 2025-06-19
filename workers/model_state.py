@@ -33,9 +33,10 @@ class ModelState:
 
 
 class GPUState(object):
-    def __init__(self):
+    def __init__(self, total_memory: int):
         # sorted (asc) list of GPU states [(time, [model states])]
         self._model_states = []
+        self._total_memory = total_memory
 
     def reserved_memory(self, time: float) -> float:
         """
@@ -49,7 +50,7 @@ class GPUState(object):
         """
             Returns total GPU memory that is not reserved (see reserved_memory).
         """
-        return GPU_MEMORY_SIZE - self.reserved_memory(time)
+        return self._total_memory - self.reserved_memory(time)
 
     def can_fetch_model(self, model: Model, time: float) -> bool:
         """
@@ -67,6 +68,21 @@ class GPUState(object):
         return (self.available_memory(time) + \
                 sum(state.size for state in self.state_at(time)
                     if state.state == ModelState.PLACED and not state.is_reserved_for_batch)) >= model.model_size
+
+    def prefetch_model(self, model: Model):
+        """
+            Preload [model] onto GPU for time 0. Ignores fetching cost.
+        """
+        assert(self.can_fetch_model(model, 0))
+
+        if len(self._model_states) == 0:
+            self._model_states.append((0, [ModelState(model, 
+                                                      ModelState.PLACED, 
+                                                      is_reserved_for_batch=False)]))
+        else:
+            self._model_states[0][1].append(ModelState(model,
+                                                       ModelState.PLACED,
+                                                       is_reserved_for_batch=False))
     
     def _insert_state_marker(self, marker_time: float, at_marker_modify, post_marker_modify):
         """
