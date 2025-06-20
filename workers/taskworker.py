@@ -12,23 +12,29 @@ class TaskWorker(Worker):
         # {task_obj1:[(preq_task_id0,arrival_time0), (preq_taks_id0, arrival_time1), ...], task2:[( ...],}
         self.waiting_tasks_buffer = defaultdict(lambda: [])
         # keep track of the queue information at time:  [ (time1,[task0,task1,]), (time2,[task1,...]),...]
-        self.queue_history = []
+        self.queue_history = {}
         self.involved = False
+
+        self.available_memory = GPU_MEMORY_SIZE
+        self.assigned_task_types = set()
 
     def add_task(self, current_time, task):
         """
         Add task into the local task queue
         """
+        print(f"[{current_time}] W{self.worker_id}: T{task.task_type} arrived")
+
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
         self.add_task_to_queue_history(task, current_time)
-        return self.maybe_start_task(current_time)
+        _, task_end_events = self.maybe_start_task_for_type(current_time, task.task_type)
+        return task_end_events
 
-    def free_slot(self, current_time):
+    def free_slot(self, current_time, task_type):
         """ Frees a slot on the worker and attempts to launch another task in that slot. """
         self.num_free_slots += 1
-        get_task_events = self.maybe_start_task(current_time)
-        return get_task_events
+        task_end_events = self.maybe_start_task_any(current_time)
+        return task_end_events
 
     #  --------------------------- DECENTRALIZED WORKER SCHEDULING  ----------------------
     def schedule_job_heft(self, current_time, job):
@@ -63,39 +69,139 @@ class TaskWorker(Worker):
 
     #  ---------------------------  TASK EXECUTION  ----------------------
 
-    def maybe_start_task(self, current_time):
+    def get_sorted_task_types(self, current_time, info_staleness=0) -> tuple[list[(int, int)], dict[(int, int), list[Task]]]:
+        """
+            Returns a list of all task_types with at least 1 task queued on this
+            worker in order of when they are scheduled to execute (e.g. task queue
+            at index 0 is the next to be executed when a slot opens up on the worker)
+            in addition to a map of all task_types to their task queues.
+        """
+
+        task_types = self.queue_history.keys()
+        task_queues = { task_type: self.get_queue_history(current_time, task_type, info_staleness) for task_type in task_types }
+        
+        task_types_by_arrival = sorted(
+            filter(lambda task_type: len(task_queues[task_type]) > 0, task_types),
+            key=lambda task_type: task_queues[task_type][0].log.task_placed_on_worker_queue_timestamp,
+        )
+
+        return task_types_by_arrival, task_queues
+
+
+    def maybe_start_task_any(self, current_time):
+        task_types, task_queues = self.get_sorted_task_types(current_time)
+        
+        if self.num_free_slots > 0:
+            for task_type in task_types:
+                first_queued_task = task_queues[task_type][0]
+                if (current_time >= first_queued_task.log.task_placed_on_worker_queue_timestamp):
+                    did_exec_batch, task_end_events = self.maybe_start_task_for_type(
+                        current_time, task_type
+                    )
+                    if did_exec_batch:
+                        return task_end_events
+                    # keep checking queue until batch is executed or tasks run out
+        
+        # if no queued tasks, maybe is never called and no wake up events are
+        # appended; in this case worker sleeps until a new task arrives
+        return []
+    
+
+    def maybe_start_task_for_type(self, current_time, task_type) -> tuple[bool, list]:
+        """
+            Execute a batch if there are free slots available and at least 1 task queued.
+
+            Returns did_exec_batch : bool, task_end_events : list[Event]
+        """
+        did_exec_batch = False
+
         task_end_events = []
-        task_list = self.get_queue_history(current_time, info_staleness=0)
-        # print(task_list)
+        task_list = self.get_queue_history(current_time, task_type, info_staleness=0)
+
+        if len(task_list) == 0:
+            # don't enqueue a wake up when no events; will alr. be called on next enqueue
+            return False, []
+        
         queued_tasks = queue.Queue()
         [queued_tasks.put(task) for task in task_list]
-        while (not queued_tasks.empty()) and self.num_free_slots > 0:
+
+        # form largest batch < max_batch_size possible
+        batch = []
+        while (not queued_tasks.empty()) and self.num_free_slots > 0 and len(batch) < task_list[0].max_batch_size:
             task = queued_tasks.get()
             if (current_time >= task.log.task_placed_on_worker_queue_timestamp):
-                # if self.worker_id == 2:
-                #     print("time{}, exec_task {}. job_start_time: {}, job_type: {} ".format(current_time, task, self.simulation.jobs[task.job_id].create_time, self.simulation.jobs[task.job_id].job_type_id))
-                task_end_events, task_end_time = self.task_execute(
-                    task, current_time)
-                self.rm_task_in_queue_history(task, current_time)
-                break
-        return task_end_events
+                batch.append(task)
+        
+        # full batch or max wait time has passed
+        if len(task_list) > 0 and self.num_free_slots > 0:
+            # print(f"[{current_time}] W{self.worker_id}: Batch of {task_list} executing")
 
-    def task_execute(self, task, current_time):
+            batch_end_events, task_end_time = self.batch_execute(
+                batch, current_time)
+            
+            # rm all tasks in batch
+            for task in batch:
+                self.rm_task_in_queue_history(task, current_time)
+
+            did_exec_batch = True
+            task_end_events += batch_end_events
+
+        return did_exec_batch, task_end_events
+
+    # modify to handle a batch of tasks:
+    # need to model batch execution duration
+    # transfer to next step should handle a list of tasks
+    def batch_execute(self, tasks, current_time):
+        assert(len(tasks) > 0) # cannot launch empty batch
+
         self.involved = True
         self.num_free_slots -= 1
-        model_fetch_time = self.fetch_model(task.model, current_time)
-        task_end_time = current_time + model_fetch_time + task.task_exec_duration
-        events = self.send_result_to_next_workers(
-            task_end_time, task)
-        task_end_events = events
-        task_end_events.append(EventOrders(task_end_time, TaskEndEvent(
-            self, job_id=task.job_id, task_id=task.task_id)))
-        self.simulation.add_job_completion_time(
-            task.job_id, task.task_id, task_end_time)
-        # task log tracking
-        task.log.task_front_queue_timestamp = current_time
-        task.log.task_execution_start_timestamp = current_time + model_fetch_time
-        task.log.task_execution_end_timestamp = task_end_time
+        model_fetch_time = self.fetch_model(tasks[0].model, current_time)
+
+        batch_index = 0
+        for i, batch_size in enumerate(sorted(tasks[0].batch_sizes)):
+            if len(tasks) <= batch_size: # choose smallest batch size > len(tasks)
+                batch_index = i
+                break
+
+        task_end_time = current_time + model_fetch_time + tasks[0].batch_exec_time[batch_index]
+        task_end_events = []
+
+        job_ids = [] # for logging
+
+        for task in tasks:
+            events = self.send_result_to_next_workers(
+                task_end_time, task)
+            task_end_events += events
+
+            self.simulation.add_job_completion_time(
+                task.job_id, task.task_id, task_end_time)
+            
+            job_ids.append(task.job_id)
+        
+            # task log tracking
+            task.log.task_front_queue_timestamp = current_time
+            task.log.task_execution_start_timestamp = current_time + model_fetch_time
+            task.log.task_execution_end_timestamp = task_end_time
+
+        self.simulation.batch_exec_log.loc[len(self.simulation.batch_exec_log)] = {
+            "time": current_time,
+            "worker_id": self.worker_id,
+            "workflow_id": tasks[0].task_type[0],
+            "task_id": tasks[0].task_id,
+            "batch_size": len(tasks),
+            "model_exec_time": tasks[0].batch_exec_time[batch_index],
+            "batch_exec_time": model_fetch_time + tasks[0].batch_exec_time[batch_index],
+            "job_ids": job_ids
+        }
+
+        task_end_events.append(EventOrders(current_time + model_fetch_time, BatchStartEvent(
+            self, job_ids=job_ids, task_type=tasks[0].task_type
+        )))
+        task_end_events.append(EventOrders(task_end_time, BatchEndEvent(
+            self, job_ids=job_ids, task_type=tasks[0].task_type
+        )))
+
         return task_end_events, task_end_time
 
     #  ---------------------------  Subsequent TASK Transfer   --------------------
@@ -152,24 +258,25 @@ class TaskWorker(Worker):
     # ------------------------- queue history update helper functions ---------------
 
     def add_task_to_queue_history(self, task, current_time):
-        last_index = len(self.queue_history) - 1
-        # 0. base case
-        if last_index == -1:
-            self.queue_history.append((current_time, [task]))
+        # 0. Base case (first entry)
+        if task.task_type not in self.queue_history:
+            self.queue_history[task.task_type] = [(current_time, [task])]
             return
+
         # 1. Find the time_stamp place to add this queue information
+        last_index = len(self.queue_history[task.task_type]) - 1
         while last_index >= 0:
-            if self.queue_history[last_index][0] == current_time:
-                if task not in self.queue_history[last_index][1]:
-                    self.queue_history[last_index][1].append(task)
+            if self.queue_history[task.task_type][last_index][0] == current_time:
+                if task not in self.queue_history[task.task_type][last_index][1]:
+                    self.queue_history[task.task_type][last_index][1].append(task)
                 break
-            if self.queue_history[last_index][0] < current_time:
+            if self.queue_history[task.task_type][last_index][0] < current_time:
                 # print("2")
-                if task not in self.queue_history[last_index][1]:
-                    next_queue = self.queue_history[last_index][1].copy()
+                if task not in self.queue_history[task.task_type][last_index][1]:
+                    next_queue = self.queue_history[task.task_type][last_index][1].copy()
                     next_queue.append(task)
                     last_index += 1
-                    self.queue_history.insert(
+                    self.queue_history[task.task_type].insert(
                         last_index, (current_time, next_queue)
                     )
                 break
@@ -177,47 +284,58 @@ class TaskWorker(Worker):
             last_index -= 1
 
         # 2. added the task to all the subsequent timestamp tuples
-        while last_index < len(self.queue_history):
-            if task not in self.queue_history[last_index][1]:
-                self.queue_history[last_index][1].append(task)
+        while last_index < len(self.queue_history[task.task_type]):
+            if task not in self.queue_history[task.task_type][last_index][1]:
+                self.queue_history[task.task_type][last_index][1].append(task)
             last_index += 1
 
     def rm_task_in_queue_history(self, task, current_time):
-        last_index = len(self.queue_history) - 1
         # 0. base case: shouldn't happen
-        if last_index == -1:
+        if task.task_type not in self.queue_history:
             AssertionError("rm model cached location to an empty list")
             return
+
+        last_index = len(self.queue_history[task.task_type]) - 1
+        
         # 1. find the place to add this remove_event to the tuple list
         while last_index >= 0:
-            if self.queue_history[last_index][0] == current_time:
-                if task in self.queue_history[last_index][1]:
-                    self.queue_history[last_index][1].remove(task)
+            if self.queue_history[task.task_type][last_index][0] == current_time:
+                if task in self.queue_history[task.task_type][last_index][1]:
+                    self.queue_history[task.task_type][last_index][1].remove(task)
                 break
-            if self.queue_history[last_index][0] < current_time:
-                if task in self.queue_history[last_index][1]:
-                    next_tasks_in_queue = self.queue_history[last_index][1].copy()
+            if self.queue_history[task.task_type][last_index][0] < current_time:
+                if task in self.queue_history[task.task_type][last_index][1]:
+                    next_tasks_in_queue = self.queue_history[task.task_type][last_index][1].copy()
                     next_tasks_in_queue.remove(task)
                     last_index = last_index + 1
-                    self.queue_history.insert(
+                    self.queue_history[task.task_type].insert(
                         last_index, (current_time, next_tasks_in_queue)
                     )
                 break
             last_index -= 1  # go to prev time
         # 2. remove the task from all the subsequent tuple
-        while last_index < len(self.queue_history):
-            if task in self.queue_history[last_index]:
-                self.queue_history[last_index][1].remove(task)
+        while last_index < len(self.queue_history[task.task_type]):
+            if task in self.queue_history[task.task_type][last_index]:
+                self.queue_history[task.task_type][last_index][1].remove(task)
             last_index += 1  # do this for the remaining element after
 
-    def get_queue_history(self, current_time, info_staleness=0) -> list:
-        return self.get_history(self.queue_history, current_time, info_staleness)
+    def get_queue_history(self, current_time, task_type, info_staleness=0) -> list:
+        return self.get_history(self.queue_history[task_type], current_time, info_staleness)
 
-    def get_task_queue_waittime(self, current_time, info_staleness=0, requiring_worker_id=None):
+    def get_task_queue_waittime(self, current_time, task_type, model_size, info_staleness=0, requiring_worker_id=None):
         if requiring_worker_id != None and requiring_worker_id != self.worker_id:
             info_staleness = 0
-        queueing_tasks = self.get_queue_history(current_time, info_staleness)
-        waittime = 0
-        for task in queueing_tasks:
-            waittime += task.task_exec_duration
-        return waittime
+
+        required_id = WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
+        if required_id >= 0 and \
+            all(m.model_id != required_id for m in self.get_model_history(current_time, info_staleness=0)):
+            return np.inf
+
+        task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
+        wait_time = 0
+        for queued_task_type in task_types:
+            for task in task_queues[queued_task_type]:
+                wait_time += task.task_exec_duration
+            if queued_task_type == task_type:
+                return wait_time
+        return wait_time
