@@ -47,11 +47,11 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 10000,
                 "OUTPUT_SIZE": 100,
                 "EXECUTION_TIME": 31,        # in ms
-                "MAX_BATCH_SIZE": 8,
+                "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 1,        # ms
-                "BATCH_SIZES": [1, 4, 8],
-                "BATCH_EXEC_TIME": [31, 98, 183],
-                "MIG_BATCH_EXEC_TIMES": {24: [31, 98, 183]}},
+                "BATCH_SIZES": [1, 4, 8, 16],
+                "BATCH_EXEC_TIME": [31, 98, 183, 349],
+                "MIG_BATCH_EXEC_TIMES": {24: [31, 98, 183, 349]}},
                {"MODEL_NAME": "flmr",
                 "MODEL_ID": 2,
                 "TASK_INDEX": 3,
