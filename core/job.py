@@ -89,7 +89,8 @@ class Job(object):
                                 task_cfg["MAX_BATCH_SIZE"],
                                 task_cfg["MAX_WAIT_TIME"],
                                 task_cfg["BATCH_SIZES"],
-                                task_cfg["BATCH_EXEC_TIME"])
+                                task_cfg["BATCH_EXEC_TIME"],
+                                task_cfg["MIG_BATCH_EXEC_TIMES"])
 
             self.tasks.append(current_task)
 
