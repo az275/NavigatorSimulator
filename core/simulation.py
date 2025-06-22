@@ -46,8 +46,9 @@ class Simulation(object):
         # Tracking measurements
         self.result_to_export = pd.DataFrame()
         self.tasks_logging_times = pd.DataFrame()
-        self.event_log = pd.DataFrame(columns=["time", "event"])
-        self.batch_exec_log = pd.DataFrame(columns=["time", "worker_id", "workflow_id", "task_id", "batch_size", "model_exec_time", "batch_exec_time", "job_ids"])
+        self.event_log = pd.DataFrame(columns=["time", "worker_id", "event"])
+        self.batch_exec_log = pd.DataFrame(columns=["time", "worker_id", "workflow_id", "task_id", "batch_size", 
+                                                    "model_exec_time", "batch_exec_time", "job_ids"])
 
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
@@ -135,12 +136,23 @@ class Simulation(object):
             min_model = min(unlocked, key=lambda m: T_vals[m])
             locked[min_model] = T_vals[min_model]
 
-        worker_configs = []
-        for (model_idxs, node, c), count in assignment.items():
-            models = list(map(lambda idx: all_models[0][int(idx)], model_idxs.split(",")))
-            for _ in range(count):
-                worker_configs.append((c, models))
-            print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
+        # static experiment alloc:
+        worker_configs = [
+            (24, [all_models[0][1]]),
+            (24, [all_models[0][1]]),
+            (24, [all_models[0][1]]),
+            (6, [all_models[0][3]]),
+            (6, [all_models[0][3]]),
+            (6, [all_models[0][3]]),
+            (6, [all_models[0][0], all_models[0][2]])
+        ]
+
+        # static Gurobi alloc:
+        # for (model_idxs, node, c), count in assignment.items():
+        #     models = list(map(lambda idx: all_models[0][int(idx)], model_idxs.split(",")))
+        #     for _ in range(count):
+        #         worker_configs.append((c, models))
+        #     print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
         return worker_configs
 
     def initialize_external_clients(self):
@@ -190,7 +202,7 @@ class Simulation(object):
 
         dataframe = pd.DataFrame(columns=["job_id", "load_info_staleness", "placement_info_staleness", "req_inter_arrival_delay",
                                           "workflow_type", "job_create_time", "scheduler_type", "slowdown", "response_time"])
-        dataframe_tasks_log = pd.DataFrame(columns=["workflow_type", "task_id", "task_arrival_time", "task_start_exec_time", "time_to_buffer", "dependency_wait_time",
+        dataframe_tasks_log = pd.DataFrame(columns=["workflow_type", "task_id", "worker_id", "task_arrival_time", "task_start_exec_time", "time_to_buffer", "dependency_wait_time",
                                                     "time_spent_in_queue", "model_fetching_time", "execution_time"])
 
         for index, completed_job in enumerate(completed_jobs):
@@ -226,7 +238,7 @@ class Simulation(object):
                 assert model_fetching_time >= 0
                 assert execution_time >= 0
 
-                dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, task.log.task_arrival_at_worker_buffer_timestamp, 
+                dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, task.executing_worker_id, task.log.task_arrival_at_worker_buffer_timestamp, 
                                                        task.log.task_execution_start_timestamp,time_to_buffer, dependency_wait_time, 
                                                        time_spent_in_queue, model_fetching_time, execution_time]
                 task_index += 1
