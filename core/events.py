@@ -150,6 +150,24 @@ class InterResultArrival(Event):
     def to_string(self):
         return "[Intermediate Results Arrival]: worker:" + str(self.worker.worker_id) + ", prev_task_id:" + str(self.prev_task.task_id) + ", cur_task_id:" + str(self.cur_task.task_id)
 
+
+class BatchStartEvent(Event):
+    """ Event to signify that a BATCH has been started by the WORKER. """
+
+    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
+        self.worker = worker
+        self.model = model
+        self.job_ids = job_ids    # integers representing the job_ids
+        self.task_type = task_type # (workflow_id, task_id)
+
+    def run(self, current_time):
+        return []
+
+    def to_string(self):
+        jobs = ",".join([str(id) for id in self.job_ids])
+        return f"[Batch Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+
+
 class BatchEndEvent(Event):
     """ Event to signify that a BATCH has been performed by the WORKER. """
 
