@@ -20,6 +20,11 @@ class TaskWorker(Worker):
         """
         Add task into the local task queue
         """
+        if task.model != None and task.model not in self.GPU_state.placed_models(current_time):
+            print("Static allocation received task that cannot be executed")
+            print(f"Allocated: {self.GPU_state.state_at(current_time)}, Requested ID: {task.model.model_id}")
+            assert(False)
+
         # Update when the task is sent to the worker
         assert (task.log.task_placed_on_worker_queue_timestamp <= current_time)
         self.add_task_to_queue_history(task, current_time) # Update when the task is sent to the worker
@@ -203,6 +208,9 @@ class TaskWorker(Worker):
         assert(len(tasks) > 0) # cannot launch empty batch
 
         self.involved = True
+
+        for task in tasks:
+            task.executing_worker_id = self.worker_id
         
         batch_index = 0
         for i, batch_size in enumerate(sorted(tasks[0].batch_sizes)):
@@ -217,7 +225,9 @@ class TaskWorker(Worker):
             else:
                 model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
-        task_end_time = current_time + model_fetch_time + tasks[0].batch_exec_time[batch_index]
+        batch_exec_time = tasks[0].task_exec_duration if tasks[0].model is None else \
+            tasks[0].get_batch_exec_time(len(tasks), self.total_memory)
+        task_end_time = current_time + model_fetch_time + batch_exec_time
         task_end_events = []
 
         job_ids = [] # for logging
@@ -243,11 +253,14 @@ class TaskWorker(Worker):
             "workflow_id": tasks[0].task_type[0],
             "task_id": tasks[0].task_id,
             "batch_size": len(tasks),
-            "model_exec_time": tasks[0].batch_exec_time[batch_index],
-            "batch_exec_time": model_fetch_time + tasks[0].batch_exec_time[batch_index],
+            "model_exec_time": batch_exec_time,
+            "batch_exec_time": model_fetch_time + batch_exec_time,
             "job_ids": job_ids
         }
 
+        task_end_events.append(EventOrders(current_time, BatchStartEvent(
+            self, tasks[0].model, job_ids=job_ids, task_type=tasks[0].task_type
+        )))
         task_end_events.append(EventOrders(task_end_time, BatchEndEvent(
             self, tasks[0].model, job_ids=job_ids, task_type=tasks[0].task_type
         )))
@@ -374,6 +387,10 @@ class TaskWorker(Worker):
     def get_task_queue_waittime(self, current_time, task_type, info_staleness=0, requiring_worker_id=None):
         if requiring_worker_id != None and requiring_worker_id != self.worker_id:
             info_staleness = 0
+
+        task_model_id = WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
+        if task_model_id >= 0 and task_model_id not in list(map(lambda m: m.model_id, self.GPU_state.placed_models(current_time))):
+            return np.inf
 
         task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
 
