@@ -111,7 +111,7 @@ if __name__ == "__main__":
         OUTPUT_FILENAME = "decentralheft"
 
         sim = Simulation_decentral(simulation_name="decentralheft", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list,
+                                    num_workers=TOTAL_NUM_OF_NODES, job_types_list=plotting_job_type_list,
                                     dynamic_adjust=False, \
                                     consider_load=True, \
                                     consider_cache=True, \

@@ -151,47 +151,14 @@ class InterResultArrival(Event):
         return "[Intermediate Results Arrival]: worker:" + str(self.worker.worker_id) + ", prev_task_id:" + str(self.prev_task.task_id) + ", cur_task_id:" + str(self.cur_task.task_id)
 
 
-class TaskEndEvent(Event):
-    """ Event to signify that a TASK has been performed by the WORKER. """
-
-    def __init__(self, worker, job_id=-1, task_id=-1):
-        self.worker = worker
-        self.job_id = job_id    # integer representing the job_id
-        self.task_id = task_id  # integer representing the task_id
-
-    def run(self, current_time):
-        return self.worker.free_slot(current_time, self)
-
-    def to_string(self):
-        return "[Task End (Job {} - Task {}) at Worker {}] ===".format(self.job_id, self.task_id, self.worker.worker_id)
-
-
 class BatchStartEvent(Event):
-    """ 
-        Event to signify that a BATCH has started executing in WORKER.
-        Only for logging purposes.
-    """
+    """ Event to signify that a BATCH has been started by the WORKER. """
 
-    def __init__(self, worker, job_ids=[], task_type=(-1, -1)):
+    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
-        self.job_ids = job_ids      # list[int] with the job_ids in the batch
-        self.task_type = task_type  # (workflow_id, task_id) identifying the batch task_type
-
-    def run(self, current_time):
-        return []
-
-    def to_string(self):
-        jobs = ",".join([str(id) for id in self.job_ids])
-        return f"[Batch Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
-
-
-class BatchEndEvent(Event):
-    """ Event to signify that a BATCH has been performed by the WORKER. """
-
-    def __init__(self, worker, job_ids=[], task_type=(-1, -1)):
-        self.worker = worker
-        self.job_ids = job_ids      # list[int] with the job_ids in the batch
-        self.task_type = task_type  # (workflow_id, task_id) identifying the batch task_type
+        self.model = model
+        self.job_ids = job_ids    # integers representing the job_ids
+        self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
         return []
@@ -211,7 +178,7 @@ class BatchEndEvent(Event):
         self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time, self.model)
+        return self.worker.free_slot(current_time, self.model, self.task_type)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
@@ -250,34 +217,6 @@ class JobEndEvent(Event):
 
     def to_string(self):
         return "[Job End] ==="
-
-
-class WorkerWakeUpEvent(Event):
-    """
-    Event to signify that max_wait_time has passed and worker should
-    check task queue.
-    """
-
-    def __init__(self, worker, task_id, task_max_wait_time):
-        self.worker = worker
-        self.task_id = task_id
-        self.task_max_wait_time = task_max_wait_time
-
-    def run(self, current_time):
-        if self.will_run(current_time):
-            return self.worker.maybe_start_task_for_type(
-                current_time, self.task_id, self.task_max_wait_time)
-        return []
-
-    def to_string(self):
-        return f"[Worker (id: {self.worker.worker_id}) Wake Up (task id: {self.task_id})]"
-    
-    def will_run(self, current_time):
-        # skip current wake up if a later wake up has been scheduled
-        if self.task_id in self.worker.next_check_times:
-            return current_time >= self.worker.next_check_times[self.task_id]
-        return True # if no batch has been run yet, wake up should be executed
-
 
 class EventOrders:
     """

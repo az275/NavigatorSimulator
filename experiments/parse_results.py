@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 from core.workflow import *
 from functools import reduce
 
+import numpy as np
 
-# TODO: verify units
-def plot_response_time_vs_arrival_time(job_df, out_path):
+
+def plot_response_time_vs_arrival_time(job_df, out_path, plot_title_prefix):
     plt.figure(figsize=(10, 6))
 
     job_types = set(job_df["workflow_type"])
@@ -29,77 +30,89 @@ def plot_response_time_vs_arrival_time(job_df, out_path):
     
     plt.xlabel("Job arrival time (ms since start)")
     plt.ylabel("Response time (ms)")
-    plt.title("Response Time vs. Arrival Time by Job Type")
+    plt.title(f"{plot_title_prefix}\nResponse Time vs. Arrival Time")
 
     plt.legend()
     plt.savefig(os.path.join(out_path, "response_vs_arrival.png"))
 
 
-def plot_batch_size_vs_batch_start(event_df, out_path):
-    batch_start_events = event_df[event_df["event"].str.contains("Batch Start")]
-
-    task_types = set(batch_start_events["event"].str.extract(r"Task \(([0-9]+, [0-9]+)\)")[0])
-    model_names = { 
-        task_type: list(filter(
-            lambda task: task["TASK_INDEX"]==int(task_type.split(", ")[1]),
-            list(filter(lambda job: job["JOB_TYPE"]==int(task_type.split(",")[0]), WORKFLOW_LIST))[0]["TASKS"]
-        ))[0]["MODEL_NAME"] for task_type in task_types }
+def plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix):
+    task_types = list(map(tuple, batch_df[['workflow_id', 'task_id']].drop_duplicates().values))
 
     for task_type in task_types:
-        type_details = [int(item) for item in task_type.split(", ")] # [workflow_id, task_id]
-
+        df = batch_df[(batch_df["workflow_id"]==task_type[0]) & (batch_df["task_id"]==task_type[1])]
+        
         fig = plt.figure(figsize=(10, 6))
 
-        batch_start_events_for_type = batch_start_events[batch_start_events["event"].str.contains(f"Task \({task_type}\)")]
-        batch_sizes = batch_start_events_for_type["event"].str.extract(r"Jobs ([0-9|,]+)")[0].str.count(f'[0-9]+')
-        
         plt.scatter(
-            batch_start_events_for_type["time"],
-            batch_sizes,
-            label=f"Workflow {type_details[0]}, Task ID {type_details[1]}: Model {model_names[task_type]}",
+            df["time"],
+            df["batch_size"],
+            label=f"Job type {task_type[0]}, Task {task_type[1]}",
             s=4
         )
     
         plt.xlabel("Batch exec start time (ms since start)")
         plt.ylabel("Batch size")
-        plt.title("Batch Size vs. Time by Model")
+        plt.title(f"{plot_title_prefix}\nBatch Size vs. Time for Task {task_type[1]}")
 
         plt.legend()
-        plt.savefig(os.path.join(out_path, f"wf_{type_details[0]}_task_{type_details[1]}_batch_size_vs_time.png"))
+        plt.savefig(os.path.join(out_path, f"wf_{task_type[0]}_task_{task_type[1]}_batch_size_vs_time.png"))
+
+        plt.close()
 
 
-def plot_batch_size_bar_chart(event_df, out_path):
-    batch_start_events = event_df[event_df["event"].str.contains("Batch Start")]
-
-    task_types = set(batch_start_events["event"].str.extract(r"Task \(([0-9]+, [0-9]+)\)")[0])
-    task_details = { 
-        task_type: list(filter(
-            lambda task: task["TASK_INDEX"]==int(task_type.split(", ")[1]),
-            list(filter(lambda job: job["JOB_TYPE"]==int(task_type.split(",")[0]), WORKFLOW_LIST))[0]["TASKS"]
-        ))[0] for task_type in task_types }
+def plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix):
+    task_types = list(map(tuple, batch_df[['workflow_id', 'task_id']].drop_duplicates().values))
 
     for task_type in task_types:
-        type_details = [int(item) for item in task_type.split(", ")] # [workflow_id, task_id]
+        df = batch_df[(batch_df["workflow_id"]==task_type[0]) & (batch_df["task_id"]==task_type[1])]
+        unique_batch_sizes = set(df["batch_size"])
 
         fig = plt.figure(figsize=(8, 6))
+        batch_size_counts = list(map(lambda size: (df["batch_size"] == size).sum(), 
+                                     unique_batch_sizes))
 
-        batch_start_events_for_type = batch_start_events[batch_start_events["event"].str.contains(f"Task \({task_type}\)")]
-        batch_size_events = batch_start_events_for_type["event"].str.extract(r"Jobs ([0-9|,]+)")[0].str.count(f'[0-9]+')
-        batch_size_counts = list(map(lambda size: (batch_size_events == size).sum(),
-                                task_details[task_type]["BATCH_SIZES"]))
-
-        plt.bar(
-            range(len(task_details[task_type]["BATCH_SIZES"])),
-            batch_size_counts
-        )
+        plt.bar(range(len(unique_batch_sizes)), batch_size_counts)
     
-        plt.xticks(range(len(task_details[task_type]["BATCH_SIZES"])), task_details[task_type]["BATCH_SIZES"])
-        plt.xlabel("Batch sizes")
+        plt.xticks(range(len(unique_batch_sizes)), unique_batch_sizes)
+        plt.xlabel("Batch size")
         plt.ylabel("Number of batches")
-        plt.title(f"Batch size distribution for {task_details[task_type]["MODEL_NAME"]} Model")
+        plt.title(f"{plot_title_prefix}\nBatch sizes over execution for task {task_type[1]}")
 
-        plt.savefig(os.path.join(out_path, f"wf_{type_details[0]}_task_{type_details[1]}_batch_size_dist.png"))
+        plt.savefig(os.path.join(out_path, f"wf_{task_type[0]}_task_{task_type[1]}_batch_size_bar_plot.png"))
+        plt.close()
 
+
+def stats_by_task_type(task_df, batch_df, out_path):
+    task_type_df = pd.DataFrame(columns=["workflow_id","task_id","mean_queueing_time_ms",
+                                        "queueing_time_stddev","mean_batch_size","batch_size_stddev",
+                                        "max_batch_size","min_batch_size","mean_exec_time_ms",
+                                        "exec_time_stddev","p95_exec_time", "mean_arrival_at_worker_interval_ms",
+                                        "p95_arrival_at_worker_interval_ms"])
+    task_types = list(map(tuple, task_df[['workflow_type', 'task_id']].drop_duplicates().values))
+    for task_type in task_types:
+        task_type_task_df = task_df[(task_df["workflow_type"]==task_type[0]) & (task_df["task_id"]==task_type[1])]
+        task_type_batch_df = batch_df[(batch_df["workflow_id"]==task_type[0]) & (batch_df["task_id"]==task_type[1])]
+        task_arrival_diffs = task_type_task_df.groupby("worker_id")["task_arrival_time"].apply(
+            lambda x: x.diff().mean())
+
+        task_type_df.loc[len(task_type_df)] = {
+            "workflow_id": task_type[0],
+            "task_id": task_type[1],
+            "mean_queueing_time_ms": task_type_task_df["time_spent_in_queue"].mean(),
+            "queueing_time_stddev": task_type_task_df["time_spent_in_queue"].std(),
+            "mean_batch_size": task_type_batch_df["batch_size"].mean(),
+            "batch_size_stddev": task_type_batch_df["batch_size"].std(),
+            "max_batch_size": task_type_batch_df["batch_size"].max(),
+            "min_batch_size": task_type_batch_df["batch_size"].min(),
+            "mean_exec_time_ms": task_type_task_df["execution_time"].mean(),
+            "exec_time_stddev": task_type_task_df["execution_time"].std(),
+            "p95_exec_time": task_type_task_df["execution_time"].quantile(0.95),
+            "mean_arrival_at_worker_interval_ms": task_arrival_diffs.mean(),
+            # "arrival_at_worker_interval_stddev": task_arrival_diffs.std(),
+            "p95_arrival_at_worker_interval_ms": np.quantile(task_arrival_diffs, 0.95) 
+        }
+    task_type_df.to_csv(os.path.join(out_path, "stats_by_task_type.csv"))
 
 def gen_per_task_stats(task_df, out_path):
     job_types = set(task_df["workflow_type"])
@@ -168,18 +181,41 @@ def plot_model_eviction_histogram(model_df, out_path):
     plt.savefig(os.path.join(out_path, f"model_eviction_hist.png"))
 
 
-results_dir_path = sys.argv[1] # results/<scheduler_type>
-out_path = sys.argv[2] if len(sys.argv) > 2 else "parsed_results"
+def verify_job_creation_and_arrival(event_df):
+    creation_events = event_df[event_df["event"].str.contains("Job Creation")]
+    print(f"Creation mean: {creation_events['time'].diff().mean()}")
 
-os.makedirs(out_path, exist_ok=True)
+    unique_workers = set(event_df["worker_id"])
+    for wid in unique_workers:
+        if wid >= 0:
+            arrival_events = event_df[(event_df["event"].str.contains("Job Arrival")) & (event_df["worker_id"]==wid)]
+            print(f"WID {wid} Arrival mean: {arrival_events['time'].diff().mean()}")
 
-job_df = pd.read_csv(os.path.join(results_dir_path, "job_breakdown.csv"))
-# task_df = pd.read_csv(os.path.join(results_dir_path, "loadDelay_1_placementDelay_1.csv"))
-events_df = pd.read_csv(os.path.join(results_dir_path, 'events_by_time.csv'))
-model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
 
-plot_model_loading_histogram(model_df, out_path)
-plot_model_eviction_histogram(model_df, out_path)
-plot_batch_size_bar_chart(events_df, out_path)
-plot_batch_size_vs_batch_start(events_df, out_path)
-plot_response_time_vs_arrival_time(job_df, out_path)
+if __name__ == "__main__":
+    results_dir_path = sys.argv[1] # results/<scheduler_type>
+    out_path = sys.argv[2] if len(sys.argv) > 2 else "parsed_results"
+
+    pipeline_name = sys.argv[3]
+    sendrate = sys.argv[4]
+    node_count = sys.argv[5]
+
+    plot_title_prefix = f"Pipeline {pipeline_name} Sendrate {sendrate} QPS {node_count}-Node Deployment"
+
+    os.makedirs(out_path, exist_ok=True)
+
+    job_df = pd.read_csv(os.path.join(results_dir_path, "job_breakdown.csv"))
+    task_df = pd.read_csv(os.path.join(results_dir_path, "loadDelay_1_placementDelay_1.csv"))
+    event_df = pd.read_csv(os.path.join(results_dir_path, 'events_by_time.csv'))
+    batch_df = pd.read_csv(os.path.join(results_dir_path, 'batch_log.csv'))
+
+    # model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
+    # plot_model_loading_histogram(model_df, out_path)
+    # plot_model_eviction_histogram(model_df, out_path)
+
+    plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix)
+    plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix)
+    plot_response_time_vs_arrival_time(job_df, out_path, plot_title_prefix)
+
+    stats_by_task_type(task_df, batch_df, out_path)
+    verify_job_creation_and_arrival(event_df)

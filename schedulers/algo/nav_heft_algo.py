@@ -3,6 +3,8 @@ from core.task import *
 from core.network import *
 from core.config import *
 
+import numpy as np
+
 
 def topological_sort(job) -> list:
     """
@@ -96,11 +98,11 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
             for task_id in sorted_tasks
         }
         
-        available_memory = GPU_MEMORY_SIZE
+        available_memory = workers[worker_id].total_memory * (10**6)
         if consider_cache:
-            available_memory = workers[worker_id].used_GPUmemory(current_time, \
-                                                                 info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                 requiring_worker_id=initial_worker_id)
+            available_memory = workers[worker_id].GPU_state.available_memory(current_time)
+                                                                 # info_staleness=PLACEMENT_INFORMATION_STALENESS, \
+                                                                 # requiring_worker_id=initial_worker_id)
         workers_available_memory[worker_id] = available_memory
         
     # Select the best worker for each task based on their ranking from high to low
@@ -128,13 +130,12 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
             model_fetch_time = 0
             cur_fetching_model_size = 0
             if consider_cache:
-                models_in_cur_worker = workers[cur_worker_id].get_model_history(current_time, \
-                                                                             info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                             requiring_workerid= initial_worker_id)
-                if cur_task.model is not None and cur_task.model not in models_in_cur_worker:
+                # TODO: info staleness
+                if cur_task.model is not None and \
+                    not workers[cur_worker_id].GPU_state.does_have_idle_copy(cur_task.model, current_time):
                     model_fetch_time = SameMachineCPUtoGPU_delay(cur_task.model.model_size)
                     cur_fetching_model_size = cur_task.model.model_size
-                    if workers_available_memory[cur_worker_id] + cur_task.model.model_size > GPU_MEMORY_SIZE:
+                    if not workers[cur_worker_id].GPU_state.can_fetch_model(cur_task.model, current_time):
                         # double model fetch time due to the overhead from model_eviction
                         model_fetch_time += model_fetch_time
             cur_earliest_start_time += model_fetch_time
@@ -180,17 +181,10 @@ def nav_heft_task_adjustment(job, task_id, workers, current_time, local_worker_i
             cur_earliest_start_time += CPU_to_CPU_delay(cur_task.input_size)
         # 2.2 calculate the model fetch time
         model_fetch_time = 0
-        models_in_cur_worker = cur_worker.get_model_history(current_time, \
-                                                            info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                            requiring_workerid= local_worker_id)
-        if cur_task.model is not None and cur_task.model not in models_in_cur_worker:
-            model_fetch_time = SameMachineCPUtoGPU_delay(cur_task.model.model_size)
-            available_memory = cur_worker.used_GPUmemory(current_time, \
-                                                         info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                         requiring_worker_id=local_worker_id)
-            if available_memory + cur_task.model.model_size > GPU_MEMORY_SIZE:
-                # double model fetch time due to the overhead from model_eviction
-                model_fetch_time = model_fetch_time * 2
+        if cur_task.model is not None and \
+            all(m.model_id != cur_task.model.model_id for m in cur_worker.GPU_state.placed_models(current_time)):
+            model_fetch_time = np.inf # static allocation
+        
         cur_earliest_start_time += model_fetch_time
         # 2.3 replace the selected_worker if cur_worker starts earlier
         if cur_earliest_start_time < earliest_start_time:
