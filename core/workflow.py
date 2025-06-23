@@ -15,11 +15,11 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 1,
                 "OUTPUT_SIZE": 1,
                 "EXECUTION_TIME": 1,         # in ms
-                "MAX_BATCH_SIZE": 128,
+                "MAX_BATCH_SIZE": 16,
                 "MAX_WAIT_TIME": 1,         # ms
-                "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64, 128],
-                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1, 1, 1],
-                "MIG_BATCH_EXEC_TIMES": {24: [1, 1, 1, 1, 1, 1, 1, 1]}},
+                "BATCH_SIZES": [1, 2, 4, 8, 16],
+                "BATCH_EXEC_TIME": [1, 2, 4, 8, 16],
+                "MIG_BATCH_EXEC_TIMES": {24: [1, 2, 4, 8, 16]}},
                {"MODEL_NAME": "text_encoder",
                 "MODEL_ID": 0,
                 "TASK_INDEX": 1,
@@ -29,26 +29,26 @@ WORKFLOW_LIST = [
                 "INPUT_SIZE": 1,
                 "OUTPUT_SIZE": 2,            # in kB
                 "EXECUTION_TIME": 10,        # avg time, in ms
-                "MAX_BATCH_SIZE": 128,
+                "MAX_BATCH_SIZE": 6,
                 "MAX_WAIT_TIME": 1,         # ms
-                "BATCH_SIZES": [1, 4, 8, 16, 32, 64, 128],
-                "BATCH_EXEC_TIME": [10, 10, 11, 12, 15, 20, 31],
+                "BATCH_SIZES": [1, 2, 4, 6],
+                "BATCH_EXEC_TIME": [10, 10, 10, 11],
                 "MIG_BATCH_EXEC_TIMES": {
-                    24: [10, 10, 11, 12, 15, 20, 31],
-                    12: [9, 9, 10, 11, 13, 18, 28],
-                    6: [7, 7, 8, 9, 11, 15, 23]
+                    24: [10, 10, 10, 11],
+                    12: [9, 9, 9, 10],
+                    6: [7, 7, 7, 8]
                 }},
                {"MODEL_NAME": "vision_encoder",
                 "MODEL_ID": 1,
                 "TASK_INDEX": 2,
                 "PREV_TASK_INDEX": [0],
                 "NEXT_TASK_INDEX": [3],
-                "MODEL_SIZE": 11655000,      # in kB
+                "MODEL_SIZE": 20919000,      # in kB
                 "INPUT_SIZE": 10000,
-                "OUTPUT_SIZE": 100,
+                "OUTPUT_SIZE": 1000,
                 "EXECUTION_TIME": 31,        # in ms
                 "MAX_BATCH_SIZE": 16,
-                "MAX_WAIT_TIME": 1,        # ms
+                "MAX_WAIT_TIME": 10,        # ms
                 "BATCH_SIZES": [1, 4, 8, 16],
                 "BATCH_EXEC_TIME": [31, 98, 183, 349],
                 "MIG_BATCH_EXEC_TIMES": {24: [31, 98, 183, 349]}},
@@ -58,8 +58,8 @@ WORKFLOW_LIST = [
                 "PREV_TASK_INDEX": [1,2],
                 "NEXT_TASK_INDEX": [4],
                 "MODEL_SIZE": 854000,        # in KB
-                "INPUT_SIZE": 102,
-                "OUTPUT_SIZE": 5,
+                "INPUT_SIZE": 1002,
+                "OUTPUT_SIZE": 10,
                 "EXECUTION_TIME": 1.7,       # in ms
                 "MAX_BATCH_SIZE": 32,
                 "MAX_WAIT_TIME": 1,         # ms
@@ -76,95 +76,94 @@ WORKFLOW_LIST = [
                 "PREV_TASK_INDEX": [3],
                 "NEXT_TASK_INDEX": [],
                 "MODEL_SIZE": 777000,        # in KB
-                "INPUT_SIZE": 5,
-                "OUTPUT_SIZE": 2,
+                "INPUT_SIZE": 10,
+                "OUTPUT_SIZE": 10,
                 "EXECUTION_TIME": 18,        # in ms
-                "MAX_BATCH_SIZE": 16,
+                "MAX_BATCH_SIZE": 32,
                 "MAX_WAIT_TIME": 1,        # ms
-                "BATCH_SIZES": [1, 4, 8, 16],
-                "BATCH_EXEC_TIME": [18, 64, 114, 209],
+                "BATCH_SIZES": [1, 4, 8, 16, 32],
+                "BATCH_EXEC_TIME": [18, 64, 114, 209, 418],
                 "MIG_BATCH_EXEC_TIMES": {
-                    24: [18, 64, 114, 209],
-                    12: [14, 50, 90, 164],
-                    6: [14, 50, 90, 164]
+                    24: [18, 64, 114, 209, 418],
+                    12: [14, 50, 90, 164, 328],
+                    6: [14, 50, 90, 164, 328]
+                }}
+               ]
+     },
+     {"JOB_TYPE": 1,
+     "JOB_NAME": "tts",
+     # the minimum amount of time necessary to execute the whole job
+     "BEST_EXEC_TIME": 101.4,
+     "TASKS": [{"MODEL_NAME": "audio_det",
+                "MODEL_ID": 4,
+                "TASK_INDEX": 0,
+                "PREV_TASK_INDEX": [],
+                "NEXT_TASK_INDEX": [1],
+                "MODEL_SIZE": 10525000,      # in kB
+                "INPUT_SIZE": 1000,
+                "OUTPUT_SIZE": 2,            # in kB
+                "EXECUTION_TIME": 66,        # avg time, in ms
+                "MAX_BATCH_SIZE": 10,
+                "MAX_WAIT_TIME": 1,          # ms
+                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
+                "BATCH_EXEC_TIME": [66, 68, 70, 73, 76, 90],
+                "MIG_BATCH_EXEC_TIMES": {
+                    24: [66, 68, 70, 73, 76, 90],
+                    12: [37, 39, 40, 41, 43, 51]
+                }},
+               {"MODEL_NAME": "encode_search",
+                "MODEL_ID": 5,
+                "TASK_INDEX": 1,
+                "PREV_TASK_INDEX": [0],
+                "NEXT_TASK_INDEX": [2,3],
+                "MODEL_SIZE": 1210000,       # in kB
+                "INPUT_SIZE": 2,
+                "OUTPUT_SIZE": 2,
+                "EXECUTION_TIME": 17.4,      # in ms
+                "MAX_BATCH_SIZE": 10,
+                "MAX_WAIT_TIME": 1,          # ms
+                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
+                "BATCH_EXEC_TIME": [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
+                "MIG_BATCH_EXEC_TIMES": {
+                    24: [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
+                    12: [14, 14.8, 14.8, 14.8, 15.7, 15.7],
+                    6: [12.3, 13.0, 13.0, 13.0, 13.8, 13.8]
+                }},
+               {"MODEL_NAME": "text_check",
+                "MODEL_ID": 6,
+                "TASK_INDEX": 2,
+                "PREV_TASK_INDEX": [1],
+                "NEXT_TASK_INDEX": [3],
+                "MODEL_SIZE": 7383000,       # in kB
+                "INPUT_SIZE": 2,
+                "OUTPUT_SIZE": 2,
+                "EXECUTION_TIME": 17,        # in ms
+                "MAX_BATCH_SIZE": 10,
+                "MAX_WAIT_TIME": 1,          # ms
+                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
+                "BATCH_EXEC_TIME": [17, 25, 45, 67.5, 90, 112.5],
+                "MIG_BATCH_EXEC_TIMES": {
+                    24: [17, 25, 45, 67.5, 90, 112.5],
+                    12: [8.3, 12, 22, 33, 44, 55],
+                    6: [4.8, 7.1, 13, 19.1, 25, 32]
+                }},
+               {"MODEL_NAME": "aggregate",
+                "MODEL_ID": 7,
+                "TASK_INDEX": 3,
+                "PREV_TASK_INDEX": [1,2],
+                "NEXT_TASK_INDEX": [],
+                "MODEL_SIZE": 0,             # in kB
+                "INPUT_SIZE": 4,
+                "OUTPUT_SIZE": 4,
+                "EXECUTION_TIME": 1,         # in ms
+                "MAX_BATCH_SIZE": 10,
+                "MAX_WAIT_TIME": 1,          # ms
+                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
+                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1],
+                "MIG_BATCH_EXEC_TIMES": {
+                    24: [1, 1, 1, 1, 1, 1],
+                    12: [1, 1, 1, 1, 1, 1]
                 }}
                ]
      }
-
-    # {"JOB_TYPE": 1,
-    #  "JOB_NAME": "tts",
-    #  # the minimum amount of time necessary to execute the whole job
-    #  "BEST_EXEC_TIME": 308.4,
-    #  "TASKS": [{"MODEL_NAME": "audio_det",
-    #             "MODEL_ID": 4,
-    #             "TASK_INDEX": 0,
-    #             "PREV_TASK_INDEX": [],
-    #             "NEXT_TASK_INDEX": [1],
-    #             "MODEL_SIZE": 10525000,      # in kB
-    #             "INPUT_SIZE": 10000,
-    #             "OUTPUT_SIZE": 2,            # in kB
-    #             "EXECUTION_TIME": 66,        # avg time, in ms
-    #             "MAX_BATCH_SIZE": 16,
-    #             "MAX_WAIT_TIME": 1,        # ms
-    #             "BATCH_SIZES": [1, 2, 4, 8, 16],
-    #             "BATCH_EXEC_TIME": [66, 68, 70, 76, 127]
-    #             },
-    #            {"MODEL_NAME": "text_encoder_2",
-    #             "MODEL_ID": 5,
-    #             "TASK_INDEX": 1,
-    #             "PREV_TASK_INDEX": [0],
-    #             "NEXT_TASK_INDEX": [2],
-    #             "MODEL_SIZE": 427000,        # in kB
-    #             "INPUT_SIZE": 2,
-    #             "OUTPUT_SIZE": 4,
-    #             "EXECUTION_TIME": 17,        # in ms
-    #             "MAX_BATCH_SIZE": 64,
-    #             "MAX_WAIT_TIME": 1,         # ms
-    #             "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64],
-    #             "BATCH_EXEC_TIME": [17, 18, 18, 19, 19, 20, 22]
-    #             },
-    #            {"MODEL_NAME": "faiss_search",
-    #             "MODEL_ID": 6,
-    #             "TASK_INDEX": 2,
-    #             "PREV_TASK_INDEX": [1],
-    #             "NEXT_TASK_INDEX": [3,4],
-    #             "MODEL_SIZE": 783000,        # in kB
-    #             "INPUT_SIZE": 4,
-    #             "OUTPUT_SIZE": 2,
-    #             "EXECUTION_TIME": 0.4,       # in ms
-    #             "MAX_BATCH_SIZE": 256,
-    #             "MAX_WAIT_TIME": 1,         # ms
-    #             "BATCH_SIZES": [1, 2, 4, 8, 16, 32, 64, 128, 256],
-    #             "BATCH_EXEC_TIME": [0.4, 0.4, 0.4, 0.5, 0.5, 0.6, 0.8, 1.1, 1.6]
-    #             },
-    #            {"MODEL_NAME": "text_check",
-    #             "MODEL_ID": 7,
-    #             "TASK_INDEX": 3,
-    #             "PREV_TASK_INDEX": [2],
-    #             "NEXT_TASK_INDEX": [4],
-    #             "MODEL_SIZE": 7383000,       # in kB
-    #             "INPUT_SIZE": 2,
-    #             "OUTPUT_SIZE": 2,
-    #             "EXECUTION_TIME": 17,        # in ms
-    #             "MAX_BATCH_SIZE": 4,
-    #             "MAX_WAIT_TIME": 1,         # ms
-    #             "BATCH_SIZES": [1, 2, 4],
-    #             "BATCH_EXEC_TIME": [17, 25, 45]
-    #             },
-    #            {"MODEL_NAME": "text_to_speech",
-    #             "MODEL_ID": 8,
-    #             "TASK_INDEX": 4,
-    #             "PREV_TASK_INDEX": [2,3],
-    #             "NEXT_TASK_INDEX": [],
-    #             "MODEL_SIZE": 783000,        # in kB
-    #             "INPUT_SIZE": 4,
-    #             "OUTPUT_SIZE": 10000,
-    #             "EXECUTION_TIME": 208,       # in ms
-    #             "MAX_BATCH_SIZE": 1,
-    #             "MAX_WAIT_TIME": 1,        # ms
-    #             "BATCH_SIZES": [1],
-    #             "BATCH_EXEC_TIME": [208]
-    #             }
-    #            ]
-    #  }
 ]
