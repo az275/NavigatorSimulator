@@ -28,7 +28,7 @@ class Task(object):
         self.executing_worker_id = -1
         self.ADFG = {}                                  # ADFG assigned to the job that this task belongs to
         self.log = TaskLifeCycleTimestamp(
-            self.job_id, self.task_id)
+            self.job_id, self.task_id, is_initial_task=(len(self.required_task_ids) == 0))
 
     def __hash__(self):
         return hash((self.task_id, self.job_id))

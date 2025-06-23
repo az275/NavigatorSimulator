@@ -84,14 +84,16 @@ class TaskWorker(Worker):
         job.assign_ADFG(activation_graph)
 
         # 3. send the first task to allocated worker
-        initial_task = job.tasks[0]
-        worker_index = activation_graph[initial_task.task_id]
-        task_arrival_time = current_time
-        if(worker_index != self.worker_id):
-            task_arrival_time = current_time + \
-                CPU_to_CPU_delay(initial_task.input_size)
-        task_arrival_events.append(EventOrders(
-            task_arrival_time, TaskArrival(self.simulation.workers[worker_index], initial_task, job.id)))
+        initial_tasks = [task for task in job.tasks if len(task.required_task_ids) == 0]
+        for initial_task in initial_tasks:
+            worker_index = activation_graph[initial_task.task_id]
+            task_arrival_time = current_time
+            if(worker_index != self.worker_id):
+                task_arrival_time = current_time + \
+                    CPU_to_CPU_delay(initial_task.input_size)
+            task_arrival_events.append(EventOrders(
+                task_arrival_time, TaskArrival(self.simulation.workers[worker_index], initial_task, job.id)))
+        
         return task_arrival_events
 
     #  ---------------------------  TASK EXECUTION  ----------------------
