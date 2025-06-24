@@ -56,9 +56,8 @@ class TaskWorker(Worker):
             self.GPU_state.release_busy_copy(model, current_time)
 
         get_task_events = []
-        task_types, task_queues = self.get_sorted_task_types(current_time)
-        for task_type in task_types:
-            batch_end_events = self._maybe_start_batch(task_queues[task_type], current_time)
+        for task_type in self.queue_history.keys():
+            batch_end_events = self.maybe_start_batch(current_time, task_type)
             get_task_events += batch_end_events
         
         return get_task_events
@@ -126,34 +125,6 @@ class TaskWorker(Worker):
             return self._CAN_RUN_ON_EVICT
         
         return self._CANNOT_RUN
-
-    def get_sorted_task_types(self, current_time, info_staleness=0) -> tuple[list[tuple[int, int]], dict[tuple[int, int], list[Task]]]:
-        """
-            Returns a list of all task_types with at least 1 task queued on this
-            worker in order of when they are scheduled to execute (e.g. task queue
-            at index 0 is the next to be executed when a slot opens up on the worker)
-            in addition to a map of all task_types to their task queues.
-        """
-        task_types = self.queue_history.keys()
-        task_queues = {}
-        
-        if self.simulation.use_boost:
-            task_queues = { task_type: sorted(self.get_queue_history(current_time, task_type, info_staleness),
-                                              key=lambda task: task.priority)
-                            for task_type in task_types }
-        else:
-            task_queues = { task_type: self.get_queue_history(current_time, task_type, info_staleness) 
-                            for task_type in task_types }
-        
-        types_to_preempt = sorted(filter(
-            lambda task_type: len(task_queues[task_type]) > 0 and \
-                self.max_wait_times[task_type] >= 0 and self.max_wait_times[task_type] <= current_time, task_types),
-            key=lambda task_type: self.max_wait_times[task_type])
-        types_by_arrival = sorted(filter(lambda task_type: len(task_queues[task_type]) > 0 and \
-                                         self.max_wait_times[task_type] > current_time, task_types),
-            key=lambda task_type: task_queues[task_type][0].log.task_placed_on_worker_queue_timestamp)
-       
-        return (types_to_preempt + types_by_arrival), task_queues
     
     def _maybe_start_batch(self, task_queue: list[Task], current_time: float) -> list[EventOrders]:
         """
@@ -228,22 +199,18 @@ class TaskWorker(Worker):
 
         for task in tasks:
             task.executing_worker_id = self.worker_id
-        
-        batch_index = 0
-        for i, batch_size in enumerate(sorted(tasks[0].batch_sizes)):
-            if len(tasks) <= batch_size: # choose smallest batch size > len(tasks)
-                batch_index = i
-                break
-
-        model_fetch_time = 0
-        if tasks[0].model != None:
-            if self.GPU_state.does_have_idle_copy(tasks[0].model, current_time):
-                self.GPU_state.reserve_idle_copy(tasks[0].model, current_time)
-            else:
-                model_fetch_time = self.fetch_model(tasks[0].model, current_time)
 
         batch_exec_time = tasks[0].task_exec_duration if tasks[0].model is None else \
             tasks[0].get_batch_exec_time(len(tasks), self.total_memory)
+        
+        model_fetch_time = 0
+        if tasks[0].model != None:
+            if self.GPU_state.does_have_idle_copy(tasks[0].model, current_time):
+                self.GPU_state.reserve_idle_copy(tasks[0].model, current_time, current_time+batch_exec_time)
+            else:
+                model_fetch_time = self.fetch_model(tasks[0].model, current_time, exec_time=batch_exec_time)
+
+        
         task_end_time = current_time + model_fetch_time + batch_exec_time
         task_end_events = []
 
@@ -406,15 +373,15 @@ class TaskWorker(Worker):
             info_staleness = 0
 
         task_model_id = WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
-        if task_model_id >= 0 and task_model_id not in list(map(lambda m: m.model_id, self.GPU_state.placed_models(current_time))):
+        if task_model_id < 0:
+            return 0
+        
+        task_model_states = list(filter(lambda s: s.model.model_id == task_model_id, 
+                                        self.GPU_state.placed_model_states(current_time)))
+        if len(task_model_states) == 0:
             return np.inf
 
-        task_types, task_queues = self.get_sorted_task_types(current_time, info_staleness=info_staleness)
-
-        wait_time = 0
-        for queued_task_type in task_types:
-            for task in task_queues[queued_task_type]:
-                wait_time += task.task_exec_duration
-            if queued_task_type == task_type:
-                return wait_time
-        return wait_time
+        if self.GPU_state.does_have_idle_copy(task_model_states[0].model, current_time):
+            return 0
+        
+        return min(s.reserved_until for s in task_model_states) - current_time
