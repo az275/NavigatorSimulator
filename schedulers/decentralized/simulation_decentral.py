@@ -9,14 +9,16 @@ from workers.taskworker import *
 
 
 class Simulation_decentral(Simulation):
-    def __init__(self, simulation_name="", job_split="", num_workers=1, job_types_list=[0], dynamic_adjust=True, consider_load=True, consider_cache=True, produce_breakdown=False):
+    def __init__(self, simulation_name="", job_split="", num_workers=1, job_types_list=[0], dynamic_adjust=True, consider_load=True, consider_cache=True, produce_breakdown=False, use_boost=False, boost_policy=0):
 
         Simulation.__init__(self, simulation_name=simulation_name, job_split=job_split, \
                             centralized_scheduler=False, \
                             dynamic_adjust=dynamic_adjust, \
                             total_workers=num_workers, \
                             job_types_list=job_types_list,\
-                            produce_breakdown=produce_breakdown)
+                            produce_breakdown=produce_breakdown,
+                            use_boost=use_boost,
+                            boost_policy=boost_policy)
 
         self.remaining_jobs = TOTAL_NUM_OF_JOBS
         self.event_queue = PriorityQueue()
@@ -31,6 +33,7 @@ class Simulation_decentral(Simulation):
             for i, config in enumerate(worker_configs):
                 self.workers.append(TaskWorker(self, i, config[0]))
                 for model in config[1]:
+                    self.metadata_service.add_model_cached_location(model, i, 0)
                     self.workers[-1].GPU_state.prefetch_model(model)
             self.initialize_external_clients()
 

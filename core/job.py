@@ -45,23 +45,19 @@ class Job(object):
             if task.task_id == task_id:
                 return task
         return None
+    
+    _TOTAL_JOB_TIME = 0
+    _STEP_EXEC_TIME = 1
+    _REMAINING_JOB_TIME = 2
 
-    def boost_size(self) -> float:
-        """
-        Compute a boost for the job based on the total processing time needed to
-        traverse its ADFG.
-        """
-        # Compute the dependents for each task, and populate the initial set of
-        # tasks that can be processed (i.e. those with no dependents).
+    def _get_processing_time(self, available_tasks: list[Task]) -> float:
         dependencies: dict[int, set[int]] = {}
         dependents: dict[int, set[int]] = {}
         available_tasks: list[Task] = []
         for task in self.tasks:
             dependencies[task.task_id] = set(task.required_task_ids)
             dependents[task.task_id] = set(task.next_task_ids)
-            if len(task.required_task_ids) == 0:
-                available_tasks.append(task)
-
+        
         max_cum_processing_time = 0
         while available_tasks:
             next_available_tasks = []
@@ -78,9 +74,26 @@ class Job(object):
                         next_available_tasks.append(self.get_task_by_id(dep))
 
             available_tasks = next_available_tasks
-
         return max_cum_processing_time
 
+    def boost_size(self, boost_policy: int) -> float:
+        """
+        Compute a boost for the job based on the [boost_policy].
+            boost_policy=_TOTAL_JOB_TIME returns the total processing time 
+            needed to traverse the ADFG.
+
+            boost_policy=_REMAINING_JOB_TIME returns the total remaining
+            processing time.
+        """
+        assert(boost_policy in [self._TOTAL_JOB_TIME, self._REMAINING_JOB_TIME])
+
+        if boost_policy == self._TOTAL_JOB_TIME:
+            return self._get_processing_time([task for task in self.tasks 
+                                              if len(task.required_task_ids) == 0])
+        elif boost_policy == self._REMAINING_JOB_TIME:
+            return self._get_processing_time([task for task in self.tasks 
+                                              if task.log.task_execution_end_timestamp > 0])
+    
     def assign_ADFG(self, ADFG):
         """
         Function to assign the ADFG to the job and tasks within the job
@@ -137,13 +150,13 @@ class Job(object):
             for next_idx in job_cfg["TASKS"][current_task_index]["NEXT_TASK_INDEX"]:
                 self.tasks[current_task_index].next_task_ids.append(next_idx)
 
-    def assign_priorities(self, boost_parameter: float):
+    def assign_priorities(self, boost_parameter: float, boost_policy: int):
         """
         Assign priorities to tasks based on the ADFG
         """
         # TODO: Use more flexible priority scheme if needed in future. Default
         # to boost for now for quick testing.
-        job_size = self.boost_size()
+        job_size = self.boost_size(boost_policy)
         for task in self.tasks:
             task.priority = self.create_time - 1 / boost_parameter * np.log(
                 1 / (1 - np.exp(-boost_parameter * job_size))

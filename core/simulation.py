@@ -28,6 +28,7 @@ class Simulation(object):
             job_types_list=[0],
             produce_breakdown=False,
             use_boost=False,
+            boost_policy=Job._TOTAL_JOB_TIME
     ):
         self.simulation_name = simulation_name
         self.centralized_scheduler = centralized_scheduler
@@ -41,6 +42,7 @@ class Simulation(object):
         self.metadata_service = MetadataService()
         self.external_clients = []
         self.use_boost = use_boost
+        self.boost_policy = boost_policy
 
         JobCreationAtExternalClient.job_creation_counter = 0
         self.jobs = {}
