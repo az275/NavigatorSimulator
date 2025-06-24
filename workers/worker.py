@@ -54,16 +54,18 @@ class Worker(object):
         return 1
 
     #  ----------  LOCAL MEMORY MANAGEMENT AND RETRIEVE  ----------"""
-    def fetch_model(self, model, current_time):
+    def fetch_model(self, model, current_time, exec_time=-1):
         if model == None or self.GPU_state.does_have_idle_copy(model, current_time):
             return 0
         
         fetch_time = 0
         fetch_time = SameMachineCPUtoGPU_delay(model.model_size)
 
+        reserve_until = -1 if exec_time < 0 else (current_time + fetch_time + exec_time)
+
         self.simulation.metadata_service.add_model_cached_location(
             model, self.worker_id, current_time + fetch_time)
-        self.GPU_state.fetch_model(model, current_time, fetch_time)
+        self.GPU_state.fetch_model(model, current_time, fetch_time, reserve_until=reserve_until)
         
         self.model_history_log.loc[len(self.model_history_log)] = {
             "start_time": current_time,

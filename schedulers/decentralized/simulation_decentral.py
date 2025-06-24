@@ -31,6 +31,7 @@ class Simulation_decentral(Simulation):
             for i, config in enumerate(worker_configs):
                 self.workers.append(TaskWorker(self, i, config[0]))
                 for model in config[1]:
+                    self.metadata_service.add_model_cached_location(model, i, 0)
                     self.workers[-1].GPU_state.prefetch_model(model)
             self.initialize_external_clients()
 

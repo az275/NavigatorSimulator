@@ -10,11 +10,12 @@ class ModelState:
     IN_FETCH = 2
     IN_EVICT = 3
 
-    def __init__(self, model: Model, state: int, is_reserved_for_batch=True, size=0):
+    def __init__(self, model: Model, state: int, is_reserved_for_batch=True, reserved_until=-1, size=0):
         self.model = model
         self.size = size if size > 0 else model.model_size
         self.state = state
         self.is_reserved_for_batch = is_reserved_for_batch
+        self.reserved_until = reserved_until
 
     def __eq__(self, value):
         return type(value) == ModelState and self.model == value.model and self.state == value.state
@@ -112,7 +113,7 @@ class GPUState(object):
             at_marker_modify(marker_time, states)
             self._model_states.insert(0, (marker_time, states))
 
-    def fetch_model(self, model: Model, start_time: float, fetch_time: float):
+    def fetch_model(self, model: Model, start_time: float, fetch_time: float, reserve_until=-1):
         """
             Fetches a new copy of [model] to the GPU if there is enough available
             memory without additional evictions.
@@ -125,13 +126,13 @@ class GPUState(object):
         if len(self._model_states) == 0:
             # mark when fetch begins and ends
             self._model_states.append((start_time, [ModelState(model, ModelState.IN_FETCH)]))
-            self._model_states.append((fetch_end_time, [ModelState(model, ModelState.PLACED)]))
+            self._model_states.append((fetch_end_time, [ModelState(model, ModelState.PLACED, reserved_until=reserve_until)]))
             return
         
         # add fetch end marker
         self._insert_state_marker(fetch_end_time,
-                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED)),
-                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED)))
+                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED, reserved_until=reserve_until)),
+                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED, reserved_until=reserve_until)))
         
         # add fetch start marker
         self._insert_state_marker(start_time,
@@ -216,13 +217,14 @@ class GPUState(object):
     def does_have_idle_copy(self, model: Model, time: float) -> bool:
         return any(state.model == model and not state.is_reserved_for_batch for state in self.placed_model_states(time))
     
-    def reserve_idle_copy(self, model: Model, time: float):
+    def reserve_idle_copy(self, model: Model, time: float, reserve_until: float):
         """
             If there is an idle copy of [model], reserve it to execute a batch
             starting from [time]. When execution finishes, a call to
             [release_busy_copy] is required.
         """
         assert(self.does_have_idle_copy(model, time))
+        assert(reserve_until > time)
 
         def _occupy_one_copy(timestamp, states):
             for j, state in enumerate(states):
@@ -230,6 +232,7 @@ class GPUState(object):
                     state.state == ModelState.PLACED and \
                     not state.is_reserved_for_batch:
                     states[j].is_reserved_for_batch = True
+                    states[j].reserved_until = reserve_until
                     return
             assert(False) # should not reach! (no idle copies)
 
