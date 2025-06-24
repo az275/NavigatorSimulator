@@ -81,10 +81,15 @@ class Job(object):
 
             current_task = Task(self.id,  # ID of the associated unique Job
                                 task_cfg["TASK_INDEX"],  # taskID
+                                (self.job_type_id, task_cfg["TASK_INDEX"]), # task type
                                 task_cfg["EXECUTION_TIME"], 
                                 required_model_for_task, 
                                 task_cfg["INPUT_SIZE"],
-                                task_cfg["OUTPUT_SIZE"])  
+                                task_cfg["OUTPUT_SIZE"],
+                                task_cfg["MAX_BATCH_SIZE"],
+                                task_cfg["MAX_WAIT_TIME"],
+                                task_cfg["BATCH_SIZES"],
+                                task_cfg["BATCH_EXEC_TIME"])
 
             self.tasks.append(current_task)
 

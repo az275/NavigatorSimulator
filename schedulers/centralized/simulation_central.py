@@ -49,9 +49,14 @@ class Simulation_central(Simulation):
             self.event_queue.put(EventOrders(
                 external_client_id * job_create_interval, \
                 JobCreationAtExternalClient(self, external_client_id)))
+
         last_time = 0
         while self.remaining_jobs > 0:
             cur_event = self.event_queue.get()
+
+            if type(cur_event.event) != WorkerWakeUpEvent or cur_event.event.will_run(cur_event.current_time):
+                self.event_log.loc[len(self.event_log)] = [cur_event.current_time, cur_event.to_string()]
+
             assert cur_event.current_time >= last_time
             last_time = cur_event.current_time
             new_events = cur_event.event.run(cur_event.current_time)

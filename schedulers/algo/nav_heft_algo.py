@@ -83,21 +83,24 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
         workers[worker.worker_id] = worker
     sorted_tasks = ranking_tasks(job)
     workers_to_select = [w.worker_id for w in worker_list]
-    workers_EAT = {}   # worker_id -> earliest_available_time
+    workers_EAT = {}   # worker_id -> (task_type -> earliest_available_time)
     workers_available_memory = {}  # worker_id -> available_memory
     # 1. initialize the earliest available time and memory for each worker
     for worker_id in workers_to_select:
-        cur_worker_waittime = 0
-        if consider_load:
-            cur_worker_waittime = workers[worker_id].get_task_queue_waittime(current_time, \
-                                                                             info_staleness=LOAD_INFORMATION_STALENESS, \
-                                                                             requiring_worker_id=initial_worker_id)
-        workers_EAT[worker_id] = current_time + cur_worker_waittime
+        workers_EAT[worker_id] = {
+            task_id: current_time + (workers[worker_id].get_task_queue_waittime(
+                current_time,
+                (job.job_type_id, task_id),
+                info_staleness=LOAD_INFORMATION_STALENESS,
+                requiring_worker_id=initial_worker_id) if consider_load else 0)
+            for task_id in sorted_tasks
+        }
+        
         available_memory = GPU_MEMORY_SIZE
         if consider_cache:
-            available_memory = workers[worker_id].used_GPUmemory(current_time, \
-                                                                 info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                 requiring_worker_id=initial_worker_id)
+            available_memory = workers[worker_id].GPU_state.available_memory(current_time)
+                                                                 # info_staleness=PLACEMENT_INFORMATION_STALENESS, \
+                                                                 # requiring_worker_id=initial_worker_id)
         workers_available_memory[worker_id] = available_memory
         
     # Select the best worker for each task based on their ranking from high to low
@@ -109,7 +112,7 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
         fetching_model_size = 0
         for cur_worker_id in workers_to_select:
             # 2.0 consider the current worker queue wait time to determine its earliest start time
-            cur_earliest_start_time = workers_EAT[cur_worker_id]
+            cur_earliest_start_time = workers_EAT[cur_worker_id][task_id]
             # 2.1 calculate the inputs arrival time
             inputs_arrival_time = 0
             if cur_task.task_id == 0 and initial_worker_id is not None and cur_worker_id != initial_worker_id:
@@ -125,13 +128,12 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
             model_fetch_time = 0
             cur_fetching_model_size = 0
             if consider_cache:
-                models_in_cur_worker = workers[cur_worker_id].get_model_history(current_time, \
-                                                                             info_staleness=PLACEMENT_INFORMATION_STALENESS, \
-                                                                             requiring_workerid= initial_worker_id)
-                if cur_task.model is not None and cur_task.model not in models_in_cur_worker:
+                # TODO: info staleness
+                if cur_task.model is not None and \
+                    not workers[cur_worker_id].GPU_state.does_have_idle_copy(cur_task.model, current_time):
                     model_fetch_time = SameMachineCPUtoGPU_delay(cur_task.model.model_size)
                     cur_fetching_model_size = cur_task.model.model_size
-                    if workers_available_memory[cur_worker_id] + cur_task.model.model_size > GPU_MEMORY_SIZE:
+                    if not workers[cur_worker_id].GPU_state.can_fetch_model(cur_task.model, current_time):
                         # double model fetch time due to the overhead from model_eviction
                         model_fetch_time += model_fetch_time
             cur_earliest_start_time += model_fetch_time
@@ -142,7 +144,7 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
                 fetching_model_size = cur_fetching_model_size
         # 3. pick the worker with ealiest start time
         cur_task_finish_time = earliest_start_time + job.tasks[task_id].task_exec_duration
-        workers_EAT[selected_worker_id] = cur_task_finish_time
+        workers_EAT[selected_worker_id][task_id] = cur_task_finish_time
         allocated_tasks_info[task_id] = (selected_worker_id,  cur_task_finish_time)
         if workers_available_memory[selected_worker_id] >= fetching_model_size:
             workers_available_memory[selected_worker_id] -= fetching_model_size
@@ -155,6 +157,7 @@ def nav_heft_job_plan(job, worker_list, current_time, initial_worker_id=None, co
 def nav_heft_task_adjustment(job, task_id, workers, current_time, local_worker_id, allocated_worker_id) -> int:
     # 1. check assigned worker wait_time to decide if need to adjust assigned worker
     cur_wait_time = workers[allocated_worker_id].get_task_queue_waittime(current_time, \
+                                                                        (job.job_type_id, task_id), \
                                                                         info_staleness=LOAD_INFORMATION_STALENESS, \
                                                                         requiring_worker_id=local_worker_id)
     cur_task = job.tasks[task_id]
@@ -167,6 +170,7 @@ def nav_heft_task_adjustment(job, task_id, workers, current_time, local_worker_i
     earliest_start_time = float('inf')
     for cur_worker in workers:
         wait_time = cur_worker.get_task_queue_waittime(current_time, \
+                                                       (job.job_type_id, task_id), \
                                                        info_staleness=LOAD_INFORMATION_STALENESS, \
                                                        requiring_worker_id=local_worker_id)
         cur_earliest_start_time = current_time + wait_time

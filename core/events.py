@@ -150,20 +150,21 @@ class InterResultArrival(Event):
     def to_string(self):
         return "[Intermediate Results Arrival]: worker:" + str(self.worker.worker_id) + ", prev_task_id:" + str(self.prev_task.task_id) + ", cur_task_id:" + str(self.cur_task.task_id)
 
+class BatchEndEvent(Event):
+    """ Event to signify that a BATCH has been performed by the WORKER. """
 
-class TaskEndEvent(Event):
-    """ Event to signify that a TASK has been performed by the WORKER. """
-
-    def __init__(self, worker, job_id=-1, task_id=-1):
+    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
-        self.job_id = job_id    # integer representing the job_id
-        self.task_id = task_id  # integer representing the task_id
+        self.model = model
+        self.job_ids = job_ids    # integers representing the job_ids
+        self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time)
+        return self.worker.free_slot(current_time, self.model, self.task_type)
 
     def to_string(self):
-        return "[Task End (Job {} - Task {}) at Worker {}] ===".format(self.job_id, self.task_id, self.worker.worker_id)
+        jobs = ",".join([str(id) for id in self.job_ids])
+        return f"[Batch End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
 
 
 # for PER_JOB scheduler
@@ -198,7 +199,6 @@ class JobEndEvent(Event):
 
     def to_string(self):
         return "[Job End] ==="
-
 
 class EventOrders:
     """
