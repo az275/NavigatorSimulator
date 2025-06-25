@@ -6,7 +6,8 @@ import numpy as np
 class Task(object):
     def __init__(self, job_id, task_id, task_type, task_exec_duration, 
                  required_model, input_size, result_size, max_batch_size, 
-                 max_wait_time, batch_sizes, batch_exec_time, mig_batch_exec_time):
+                 max_wait_time, batch_sizes, batch_exec_time, mig_batch_exec_time,
+                 exec_time_cv):
         self.job_id = job_id                           # id of the job the task belongs to
         self.task_id = task_id                         # id of the task itself
         self.task_type = task_type                     # (workflow_id, task_id)
@@ -22,6 +23,7 @@ class Task(object):
         self.batch_sizes = batch_sizes
         self.batch_exec_time = batch_exec_time
         self.mig_batch_exec_time = mig_batch_exec_time
+        self.exec_time_cv = exec_time_cv
         # list of Tasks (inputs) that this task requires ( list will be appended as the job generated)
         self.required_task_ids = []                        # list of task ids
         self.next_task_ids = []                            # list of task ids
@@ -53,7 +55,10 @@ class Task(object):
         assert(batch_size <= self.max_batch_size)
         m, b, r, p, std_err = stats.linregress(self.batch_sizes, 
                                                self.mig_batch_exec_time[partition_size])
-        return m * batch_size + b
+        exact_exec_time = m * batch_size + b
+        stddev = self.exec_time_cv * exact_exec_time
+        randomized_time = np.random.normal(loc=exact_exec_time, scale=stddev, size=1)
+        return randomized_time[0]
 
     def print_task_log(self):
         print(self.log.toString())
