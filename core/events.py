@@ -1,7 +1,5 @@
-import random
 from core.job import *
 from core.network import *
-import numpy as np
 from core.config import *
 
 
@@ -79,15 +77,110 @@ class JobArrivalAtScheduler(Event):
     def run(self, current_time):
         # Schedule job
         if self.simulation.job_split == "PER_TASK":
+            for task in self.job.tasks:
+                task.log.task_arrival_at_scheduler_timestamp = current_time
             new_events = self.simulation.schedule_job_and_send_tasks(
                 self.job, current_time)
-        elif self.simulation.job_split == "PER_JOB":
-            new_events = self.simulation.schedule_job_and_send_job(
-                self.job, current_time)
+        # elif self.simulation.job_split == "PER_JOB":
+        #     new_events = self.simulation.schedule_job_and_send_job(
+        #         self.job, current_time)
         return new_events
 
     def to_string(self):
         return "[Job Arrival at Scheduler (Job {})] ++".format(self.job.id)
+    
+
+class TasksArrivalAtScheduler(Event):
+    """
+    Event signifying that Task(s) arrived at a Centralized scheduler.
+    Only for Centralized Schedulers
+    """
+
+    def __init__(self, simulation, tasks):
+        assert(len(tasks) > 0)
+        self.simulation = simulation
+        self.tasks = tasks
+
+    def run(self, current_time):
+        for task in self.tasks:
+            # only set if not set already (avoid changing order for preempted tasks)
+            if task.log.task_arrival_at_scheduler_timestamp == 0:
+                task.log.task_arrival_at_scheduler_timestamp = current_time
+        return self.simulation.schedule_tasks_on_arrival(self.tasks, current_time)
+
+    def to_string(self):
+        return f"[Tasks Arrival at Scheduler (Type: {self.tasks[0].task_type}, Job IDs: {list(map(lambda t: t.job_id, self.tasks))})] ++"
+
+
+class BatchRejectionAtWorker(Event):
+    """
+    Event signifying that a worker was busy when a batch was sent for execution, and
+    the batch has been sent back to the Centralized scheduler for rescheduling.
+    """
+
+    def __init__(self, simulation, worker, batch):
+        self.simulation = simulation
+        self.worker = worker
+        self.batch = batch
+
+    def run(self, current_time):
+        assert self.simulation.worker_states[self.worker.worker_id][self.batch.model.model_id].id == self.batch.id
+        self.simulation.worker_states[self.worker.worker_id][self.batch.model.model_id] = None # update scheduler state
+        return [EventOrders(current_time, TasksArrivalAtScheduler(self.simulation, self.batch.tasks))] # reschedule batch
+
+    def to_string(self):
+        return f"[Batch {self.batch.id} Sent Back by Worker {self.worker.worker_id}]"
+
+
+class BatchArrivalAtWorker(Event):
+    """
+    Event signifying that a batch of tasks arrived for execution at a worker.
+    """
+
+    def __init__(self, simulation, worker, batch):
+        self.simulation = simulation
+        self.worker = worker
+        self.batch = batch
+
+    def run(self, current_time):
+        # NOTE: Sends back tasks if busy
+        if not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time):
+            return [EventOrders(current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size), 
+                                BatchRejectionAtWorker(self.simulation, self.worker, self.batch))]
+        for task in self.batch.tasks:
+            task.log.set_task_placed_on_worker_queue_timestamp(current_time)
+        return self.worker.maybe_start_batch(self.batch, current_time)
+
+    def to_string(self):
+        return f"[Batch {self.batch.id} Arrival at Worker {self.worker.worker_id} (Type: {self.batch.tasks[0].task_type}, Job IDs: {self.batch.job_ids})] ++"
+
+
+class BatchPreemptionAtWorker(Event):
+    """
+    Event signifying that a batch should be preempted at a worker.
+    """
+
+    def __init__(self, simulation, worker, batch, old_batch_id):
+        self.simulation = simulation
+        self.worker = worker
+        self.batch = batch # replacement batch
+        self.old_batch_id = old_batch_id # preempted batch
+
+    def run(self, current_time):
+        # check if batch to be preempted still exists/is actively executing
+        if any(s.reserved_batch and s.reserved_batch.id == self.old_batch_id 
+               for s in self.worker.GPU_state.state_at(current_time)):
+            for task in self.batch.tasks:
+                task.log.set_task_placed_on_worker_queue_timestamp(current_time)
+            return self.worker.preempt_batch(self.old_batch_id, self.batch, current_time)
+        else:
+            # if outdated decision, send back tasks for rescheduling
+            return [EventOrders(
+                current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size),
+                BatchRejectionAtWorker(self.simulation, self.worker, self.batch))]
+
+    def to_string(self):
+        return f"[Batch Preemption at Worker {self.worker.worker_id} (Batch {self.old_batch_id} preempted)]"
 
 
 class JobArrivalAtWorker(Event):
@@ -154,9 +247,9 @@ class InterResultArrival(Event):
 class BatchStartEvent(Event):
     """ Event to signify that a BATCH has been started by the WORKER. """
 
-    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
+    def __init__(self, worker, batch_id=-1, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
-        self.model = model
+        self.batch_id = batch_id
         self.job_ids = job_ids    # integers representing the job_ids
         self.task_type = task_type # (workflow_id, task_id)
 
@@ -165,24 +258,26 @@ class BatchStartEvent(Event):
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
-        return f"[Batch Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+        return f"[Batch {self.batch_id} Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
 
 
 class BatchEndEvent(Event):
     """ Event to signify that a BATCH has been performed by the WORKER. """
 
-    def __init__(self, worker, model, job_ids=[], task_type=(-1, -1)):
+    def __init__(self, worker, batch, job_ids=[], task_type=(-1, -1)):
         self.worker = worker
-        self.model = model
+        self.batch = batch
         self.job_ids = job_ids    # integers representing the job_ids
         self.task_type = task_type # (workflow_id, task_id)
 
     def run(self, current_time):
-        return self.worker.free_slot(current_time, self.model, self.task_type)
+        if self.worker.did_abandon_batch(self.batch.id):
+            return []
+        return self.worker.free_slot(current_time, self.batch, self.task_type)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
-        return f"[Batch End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+        return f"[Batch {self.batch.id} End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
 
 
 # for PER_JOB scheduler
