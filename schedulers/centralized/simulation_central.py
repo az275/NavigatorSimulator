@@ -5,6 +5,7 @@ from core.network import CPU_to_CPU_delay
 from core.simulation import *
 from core.config import *
 from schedulers.algo.nav_heft_algo import *
+from schedulers.algo.flex_algo import *
 from workers.taskworker import *
 from workers.jobworker import *
 
@@ -21,21 +22,33 @@ class Simulation_central(Simulation):
         self.remaining_jobs = TOTAL_NUM_OF_JOBS
         self.event_queue = PriorityQueue()
 
-        self.initialize_workers()
-        self.initialize_external_clients()
+        self.model_queues = {}      # model id -> list[Task]
+        self.worker_states = {}     # worker id -> (model id -> Batch) (scheduler's view of workers)
 
+        self.initialize_workers()
+        self.initialize_external_clients()        
+
+    def initialize_workers(self):
+        super().initialize_workers()
+        # init currently executing batch ids
+        for worker in self.workers:
+            self.worker_states[worker.worker_id] = {}
 
     def schedule_job_and_send_tasks(self, job, current_time):
         if(self.simulation_name == "centralheft"):
             return self.nav_heft_schedule_job_and_send_tasks(job,  current_time)
+        elif self.simulation_name == "shepherd":
+            return flex_schedule_job_on_arrival(self, job, current_time)
         elif(self.simulation_name == "hashtask"):
             return self.hash_schedule_job_and_send_tasks(job, current_time)
-
-    def initialize_workers(self):
-        if(self.job_split == "PER_TASK"):
-            for i in range(self.total_workers):
-                self.workers.append(TaskWorker(self, self.slots_per_worker, i))
-            # self.initialize_model_placement_at_workers()
+        
+    def schedule_tasks_on_arrival(self, tasks, current_time):
+        assert(self.simulation_name == "shepherd")
+        for task in tasks:
+            if task.model.model_id not in self.model_queues:
+                self.model_queues[task.model.model_id] = PriorityQueue()
+            self.model_queues[task.model.model_id].put(OrderedTask(task))
+        return flex_schedule_tasks_on_arrival(self, current_time)
 
     def add_job_completion_time(self, job_id, task_id, completion_time):
         job_is_completed = self.jobs[job_id].job_completed(
@@ -53,9 +66,27 @@ class Simulation_central(Simulation):
         last_time = 0
         while self.remaining_jobs > 0:
             cur_event = self.event_queue.get()
+            
+            if type(cur_event.event) in [BatchStartEvent] and \
+                cur_event.event.worker.did_abandon_batch(cur_event.event.batch_id):
+                continue
 
-            if type(cur_event.event) != WorkerWakeUpEvent or cur_event.event.will_run(cur_event.current_time):
-                self.event_log.loc[len(self.event_log)] = [cur_event.current_time, cur_event.to_string()]
+            if type(cur_event.event) in [BatchEndEvent] and \
+                cur_event.event.worker.did_abandon_batch(cur_event.event.batch.id):
+                continue
+            
+            print(cur_event.to_string())
+            print(f"Jobs left: {self.remaining_jobs}")
+
+            worker_id = -1
+            if type(cur_event.event) == JobArrivalAtWorker:
+                worker_id = cur_event.event.worker_id
+            elif type(cur_event.event) not in [JobCreationAtExternalClient, JobArrivalAtScheduler, TasksArrivalAtScheduler]:
+                worker_id = cur_event.event.worker.worker_id
+
+            assert type(cur_event.event) != TaskArrival
+
+            self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]
 
             assert cur_event.current_time >= last_time
             last_time = cur_event.current_time
