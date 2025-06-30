@@ -2,6 +2,8 @@ import copy
 
 from core.config import *
 from core.model import Model
+from core.task import Task
+from core.batch import Batch
 
 
 class ModelState:
@@ -10,18 +12,22 @@ class ModelState:
     IN_FETCH = 2
     IN_EVICT = 3
 
-    def __init__(self, model: Model, state: int, is_reserved_for_batch=True, reserved_until=-1, size=0):
+    def __init__(self, model: Model, state: int, reserved_batch: Batch=None, reserved_until=-1, size=0):
         self.model = model
         self.size = size if size > 0 else model.model_size
         self.state = state
-        self.is_reserved_for_batch = is_reserved_for_batch
+        self.reserved_batch = reserved_batch
         self.reserved_until = reserved_until
 
     def __eq__(self, value):
-        return type(value) == ModelState and self.model == value.model and self.state == value.state
+        return type(value) == ModelState and \
+            self.model.model_id == value.model.model_id and \
+            self.state == value.state and \
+            self.reserved_batch == value.reserved_batch
     
     def __str__(self):
-        return f"<[{self._state_to_str()}] [{'NOT ' if not self.is_reserved_for_batch else ''}IN USE] Model ID: {self.model.model_id if self.model else -1}>"
+        executing_batch = f'EXECUTING BATCH {self.reserved_batch.id}' if self.reserved_batch else 'NOT IN USE'
+        return f"<[{self._state_to_str()}] [{executing_batch}] Model ID: {self.model.model_id if self.model else -1}>"
     
     def __repr__(self):
         return self.__str__()
@@ -68,7 +74,7 @@ class GPUState(object):
         # cannot use space occupied by models currently being fetched/evicted or used
         return (self.available_memory(time) + \
                 sum(state.size for state in self.state_at(time)
-                    if state.state == ModelState.PLACED and not state.is_reserved_for_batch)) >= model.model_size
+                    if state.state == ModelState.PLACED and not state.reserved_batch)) >= model.model_size
 
     def prefetch_model(self, model: Model):
         """
@@ -77,13 +83,9 @@ class GPUState(object):
         assert(self.can_fetch_model(model, 0))
 
         if len(self._model_states) == 0:
-            self._model_states.append((0, [ModelState(model, 
-                                                      ModelState.PLACED, 
-                                                      is_reserved_for_batch=False)]))
+            self._model_states.append((0, [ModelState(model, ModelState.PLACED)]))
         else:
-            self._model_states[0][1].append(ModelState(model,
-                                                       ModelState.PLACED,
-                                                       is_reserved_for_batch=False))
+            self._model_states[0][1].append(ModelState(model, ModelState.PLACED))
     
     def _insert_state_marker(self, marker_time: float, at_marker_modify, post_marker_modify):
         """
@@ -113,10 +115,13 @@ class GPUState(object):
             at_marker_modify(marker_time, states)
             self._model_states.insert(0, (marker_time, states))
 
-    def fetch_model(self, model: Model, start_time: float, fetch_time: float, reserve_until=-1):
+    def fetch_model(self, model: Model, start_time: float, fetch_time: float, reserved_batch: Batch=None, reserve_until=-1):
         """
             Fetches a new copy of [model] to the GPU if there is enough available
             memory without additional evictions.
+
+            If [reserved_batch] and [reserve_until] are specified, reserves the
+            model for execution of [reserved_batch] until time [reserve_until].
         """
         assert(model != None)
         assert(self.can_fetch_model(model, start_time))
@@ -126,13 +131,19 @@ class GPUState(object):
         if len(self._model_states) == 0:
             # mark when fetch begins and ends
             self._model_states.append((start_time, [ModelState(model, ModelState.IN_FETCH)]))
-            self._model_states.append((fetch_end_time, [ModelState(model, ModelState.PLACED, reserved_until=reserve_until)]))
+            self._model_states.append((fetch_end_time, [ModelState(model, ModelState.PLACED, 
+                                                                   reserved_batch=reserved_batch,
+                                                                   reserved_until=reserve_until)]))
             return
         
         # add fetch end marker
         self._insert_state_marker(fetch_end_time,
-                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED, reserved_until=reserve_until)),
-                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED, reserved_until=reserve_until)))
+                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED,
+                                                                             reserved_batch=reserved_batch, 
+                                                                             reserved_until=reserve_until)),
+                                  lambda _, states: states.append(ModelState(model, ModelState.PLACED,
+                                                                             reserved_batch=reserved_batch,
+                                                                             reserved_until=reserve_until)))
         
         # add fetch start marker
         self._insert_state_marker(start_time,
@@ -215,9 +226,10 @@ class GPUState(object):
         return [state for state in states if state.state == ModelState.PLACED]
     
     def does_have_idle_copy(self, model: Model, time: float) -> bool:
-        return any(state.model == model and not state.is_reserved_for_batch for state in self.placed_model_states(time))
+        return any(state.model.model_id == model.model_id and not state.reserved_batch
+                   for state in self.placed_model_states(time))
     
-    def reserve_idle_copy(self, model: Model, time: float, reserve_until: float):
+    def reserve_idle_copy(self, model: Model, time: float, reserved_batch: Batch, reserve_until: float):
         """
             If there is an idle copy of [model], reserve it to execute a batch
             starting from [time]. When execution finishes, a call to
@@ -228,10 +240,10 @@ class GPUState(object):
 
         def _occupy_one_copy(timestamp, states):
             for j, state in enumerate(states):
-                if state.model == model and \
+                if state.model.model_id == model.model_id and \
                     state.state == ModelState.PLACED and \
-                    not state.is_reserved_for_batch:
-                    states[j].is_reserved_for_batch = True
+                    not state.reserved_batch:
+                    states[j].reserved_batch = reserved_batch
                     states[j].reserved_until = reserve_until
                     return
             assert(False) # should not reach! (no idle copies)
@@ -239,14 +251,17 @@ class GPUState(object):
         # reserve 1 idle copy from start to exec end
         self._insert_state_marker(time, _occupy_one_copy, _occupy_one_copy)
 
-    def release_busy_copy(self, model: Model, time: float):
+    def release_busy_model(self, batch_id: int, time: float):
         """
-            Releases a previously occupied/reserved copy of [model] at [time].
+            Releases a previously occupied/reserved copy of model that was
+            executing batch specified by [batch_id] at [time].
         """
         def _release_one_copy(timestamp, states):
             for i, state in enumerate(states):
-                if state.model == model and state.state == ModelState.PLACED and state.is_reserved_for_batch:
-                    states[i].is_reserved_for_batch = False
+                if state.reserved_batch and state.reserved_batch.id == batch_id and \
+                    state.state == ModelState.PLACED:
+                    states[i].reserved_batch = None
+                    states[i].reserved_until = -1
                     return
-
+            assert(False) # no batch of [batch_id] found
         self._insert_state_marker(time, _release_one_copy, _release_one_copy)
