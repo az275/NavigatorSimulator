@@ -4,10 +4,11 @@ import numpy as np
 
 
 class Task(object):
-    def __init__(self, job_id, task_id, task_type, task_exec_duration, 
+    def __init__(self, job, job_id, task_id, task_type, task_exec_duration, 
                  required_model, input_size, result_size, max_batch_size, 
                  max_wait_time, batch_sizes, batch_exec_time, mig_batch_exec_time,
                  exec_time_cv):
+        self.job = job
         self.job_id = job_id                           # id of the job the task belongs to
         self.task_id = task_id                         # id of the task itself
         self.task_type = task_type                     # (workflow_id, task_id)
