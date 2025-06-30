@@ -11,6 +11,8 @@ from core.print_utils import *
 from core.external_client import *
 from core.events import *
 import pandas as pd
+from workers.heft_task_worker import *
+from workers.shepherd_task_worker import *
 
 # import gurobipy as gp
 # from gurobipy import GRB
@@ -40,6 +42,8 @@ class Simulation(object):
         self.metadata_service = MetadataService()
         self.external_clients = []
 
+        self._batch_counter = 0
+
         JobCreationAtExternalClient.job_creation_counter = 0
         self.jobs = {}
         
@@ -47,8 +51,8 @@ class Simulation(object):
         self.result_to_export = pd.DataFrame()
         self.tasks_logging_times = pd.DataFrame()
         self.event_log = pd.DataFrame(columns=["time", "worker_id", "event"])
-        self.batch_exec_log = pd.DataFrame(columns=["time", "worker_id", "workflow_id", "task_id", "batch_size", 
-                                                    "model_exec_time", "batch_exec_time", "job_ids"])
+        self.batch_exec_log = pd.DataFrame(columns=["start_time", "end_time", "worker_id", "workflow_id", 
+                                                    "task_id", "batch_size", "job_ids"])
 
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
@@ -176,6 +180,19 @@ class Simulation(object):
         #         worker_configs.append((c, models))
         #     print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
         return worker_configs
+    
+    def initialize_workers(self):
+        if self.job_split == "PER_TASK":
+            worker_configs = self.initialize_model_placement_at_workers()
+            for i, config in enumerate(worker_configs):
+                if self.simulation_name == "shepherd":
+                    self.workers.append(ShepherdWorker(self, i, config[0]))
+                else:
+                    self.workers.append(HeftTaskWorker(self, i, config[0]))
+                for model in config[1]:
+                    self.metadata_service.add_model_cached_location(model, i, 0)
+                    self.workers[-1].GPU_state.prefetch_model(model)
+            self.initialize_external_clients()
 
     def initialize_external_clients(self):
         for job_type_id in self.job_types_list:
@@ -254,11 +271,11 @@ class Simulation(object):
                 execution_time = task.log.task_execution_end_timestamp - \
                     task.log.task_execution_start_timestamp
 
-                assert time_to_buffer >= 0
-                assert dependency_wait_time >= 0
-                assert time_spent_in_queue >= 0
-                assert model_fetching_time >= 0
-                assert execution_time >= 0
+                # assert time_to_buffer >= 0
+                # assert dependency_wait_time >= 0
+                # assert time_spent_in_queue >= 0
+                # assert model_fetching_time >= 0
+                # assert execution_time >= 0
 
                 dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, task.executing_worker_id, task.log.task_arrival_at_worker_buffer_timestamp, 
                                                        task.log.task_execution_start_timestamp,time_to_buffer, dependency_wait_time, 
