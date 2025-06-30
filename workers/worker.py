@@ -23,7 +23,8 @@ class Worker(object):
 
         self.model_history_log = pd.DataFrame(columns=["start_time", "end_time",
                                                        "model_id", "placed_or_evicted"])
-
+        
+        self._abandoned_batches = []
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -52,9 +53,25 @@ class Worker(object):
                 model, self.worker_id, 0)
             return 1
         return 1
+    
+    """ ----------  BATCH TRACKING AND MANAGEMENT  ---------- """
+    
+    def evict_batch(self, batch_id: int, time: float):
+        evicted_batch = None
+        for s in self.GPU_state.state_at(time):
+            if s.reserved_batch and s.reserved_batch.id == batch_id:
+                evicted_batch = s.reserved_batch
+                break
+        self.GPU_state.release_busy_model(batch_id, time)
+        self._abandoned_batches.append(batch_id)
+        return evicted_batch
 
-    #  ----------  LOCAL MEMORY MANAGEMENT AND RETRIEVE  ----------"""
-    def fetch_model(self, model, current_time, exec_time=-1):
+    def did_abandon_batch(self, batch_id: int):
+        return batch_id in self._abandoned_batches
+    
+    """ ----------  LOCAL MEMORY MANAGEMENT  ---------- """
+    
+    def fetch_model(self, model, batch, current_time, exec_time=-1):
         if model == None or self.GPU_state.does_have_idle_copy(model, current_time):
             return 0
         
@@ -65,7 +82,8 @@ class Worker(object):
 
         self.simulation.metadata_service.add_model_cached_location(
             model, self.worker_id, current_time + fetch_time)
-        self.GPU_state.fetch_model(model, current_time, fetch_time, reserve_until=reserve_until)
+        self.GPU_state.fetch_model(model, current_time, fetch_time, 
+                                   reserved_batch=batch, reserve_until=reserve_until)
         
         self.model_history_log.loc[len(self.model_history_log)] = {
             "start_time": current_time,
@@ -133,6 +151,32 @@ class Worker(object):
                         }
                     return 0
         return 0
+    
+    _CAN_RUN_NOW = 0
+    _CAN_RUN_ON_EVICT = 1
+    _CANNOT_RUN = 2
+
+    def can_run_task(self, current_time: float, model: Model, info_staleness=0) -> int:
+        """
+            Returns _CAN_RUN_NOW if model None, or model is on GPU and not currently in use.
+            Returns _CAN_RUN_ON_EVICT if model can be loaded onto the GPU upon evicting
+            unused models.
+            Returns _CANNOT_RUN otherwise.
+        """
+        if model == None or self.GPU_state.does_have_idle_copy(model, current_time):
+            return self._CAN_RUN_NOW
+        
+        # cannot load additional copies of the same model
+        if any(map(lambda s: s.model == model, self.GPU_state.state_at(current_time))):
+            return self._CANNOT_RUN
+        
+        if self.GPU_state.can_fetch_model(model, current_time):
+            return self._CAN_RUN_NOW
+        
+        if self.GPU_state.can_fetch_model_on_eviction(model, current_time):
+            return self._CAN_RUN_ON_EVICT
+        
+        return self._CANNOT_RUN
 
     # ------------------------- cached model history update helper functions ---------------
     def get_history(self, history, current_time, info_staleness) -> list:
