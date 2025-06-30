@@ -79,7 +79,8 @@ class Job(object):
                                                 model_id=task_cfg["MODEL_ID"],
                                                 model_size=task_cfg["MODEL_SIZE"])
 
-            current_task = Task(self.id,  # ID of the associated unique Job
+            current_task = Task(self,
+                                self.id,  # ID of the associated unique Job
                                 task_cfg["TASK_INDEX"],  # taskID
                                 (self.job_type_id, task_cfg["TASK_INDEX"]), # task type
                                 task_cfg["EXECUTION_TIME"], 
@@ -107,6 +108,17 @@ class Job(object):
             if task.job_id == self.id and task.task_id == f_task[0].task_id:
                 return True
         return False
+    
+    def remaining_tasks(self):
+        return list(filter(lambda t: t.task_id not in self.completed_tasks, self.tasks))
+    
+    def newly_available_tasks(self, newly_completed: Task):
+        ready_tasks = []
+        for task in self.remaining_tasks():
+            if newly_completed.task_id in task.required_task_ids and \
+                all(t in self.completed_tasks for t in task.required_task_ids):
+                ready_tasks.append(task)
+        return ready_tasks
 
     def print_job_info(self):
         for task in self.tasks:
