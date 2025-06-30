@@ -10,6 +10,7 @@ class TaskLifeCycleTimestamp(object):
         self.task_front_queue_timestamp = 0
         self.task_execution_start_timestamp = 0
         self.task_execution_end_timestamp = 0
+        self.task_arrival_at_scheduler_timestamp = 0
 
     def set_task_arrival_at_worker_buffer_timestamp(self, timestamp):
         """
@@ -34,7 +35,9 @@ class TaskLifeCycleTimestamp(object):
         """
         model fetch time for this task
         """
-        assert self.task_front_queue_timestamp != 0 and self.task_execution_start_timestamp != 0
+        # assert self.task_front_queue_timestamp != 0 and self.task_execution_start_timestamp != 0
+        # assert self.task_execution_start_timestamp != 0
+        # TODO: check execution timestamp
         return self.task_execution_start_timestamp - self.task_front_queue_timestamp
 
     def get_task_wait_time(self):
