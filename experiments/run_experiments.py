@@ -28,6 +28,8 @@ if __name__ == "__main__":
     for arg in sys.argv[1:]:
         if arg == "centralheft":
             experiment_schedulers.append("centralheft")
+        elif arg == "shepherd":
+            experiment_schedulers.append("shepherd")
         elif arg == "decentralheft":
             experiment_schedulers.append("decentralheft")
         elif arg == "hashtask":
@@ -48,7 +50,7 @@ if __name__ == "__main__":
     # 2. Run and collect data
     if "centralheft" in experiment_schedulers:
         sim = Simulation_central(simulation_name="centralheft", job_split="PER_TASK",
-                                    num_workers=TOTAL_NUM_OF_WORKERS, job_types_list=plotting_job_type_list, 
+                                    num_workers=TOTAL_NUM_OF_NODES, job_types_list=plotting_job_type_list, 
                                     produce_breakdown=True)
         sim.run()
 
@@ -62,6 +64,30 @@ if __name__ == "__main__":
         tasks_logging_times = sim.tasks_logging_times
         tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["centralheft"] + "loadDelay_" + str(
             LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+        
+    if "shepherd" in experiment_schedulers:
+        sim = Simulation_central(simulation_name="shepherd", job_split="PER_TASK",
+                                    num_workers=TOTAL_NUM_OF_NODES, job_types_list=plotting_job_type_list, 
+                                    produce_breakdown=True)
+        sim.run()
+        
+        event_log = sim.event_log
+        event_log.to_csv(OUTPUT_FILE_NAMES["shepherd"] + "events_by_time.csv")
+        
+        result_to_export = sim.result_to_export
+        result_to_export.to_csv(OUTPUT_FILE_NAMES["shepherd"] + "job_breakdown.csv")
+
+        tasks_logging_times = sim.tasks_logging_times
+        tasks_logging_times.to_csv(OUTPUT_FILE_NAMES["shepherd"] + "loadDelay_" + str(
+            LOAD_INFORMATION_STALENESS) + "_placementDelay_" + str(PLACEMENT_INFORMATION_STALENESS) + ".csv")
+        
+        sim.batch_exec_log.to_csv(OUTPUT_FILE_NAMES["shepherd"] + "batch_log.csv")
+        
+        worker_model_histories = pd.concat(list(map(lambda w: w.model_history_log, sim.workers)), 
+                                           keys=list(map(lambda w: w.worker_id, sim.workers)), 
+                                           names=['worker_id']).reset_index(level='worker_id')
+        worker_model_histories = worker_model_histories.sort_values(by="start_time")
+        worker_model_histories.to_csv(OUTPUT_FILE_NAMES["shepherd"] + "model_history_log.csv")
 
    
     if "hashtask" in experiment_schedulers:
