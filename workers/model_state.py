@@ -38,6 +38,21 @@ class ModelState:
         elif self.state == self.IN_EVICT: return "Evicting"
         elif self.state == self.PRE_FETCH: return "Reserved"
 
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        copied = self.__class__.__new__(self.__class__)
+        memo[id(self)] = copied
+
+        copied.model = self.model
+        copied.reserved_batch = self.reserved_batch
+        copied.reserved_until = copy.deepcopy(self.reserved_until, memo)
+        copied.size = copy.deepcopy(self.size, memo)
+        copied.state = copy.deepcopy(self.state, memo)
+
+        return copied
+
 
 class GPUState(object):
     def __init__(self, total_memory: int):

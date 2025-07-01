@@ -271,11 +271,11 @@ class Simulation(object):
                 execution_time = task.log.task_execution_end_timestamp - \
                     task.log.task_execution_start_timestamp
 
-                # assert time_to_buffer >= 0
-                # assert dependency_wait_time >= 0
-                # assert time_spent_in_queue >= 0
-                # assert model_fetching_time >= 0
-                # assert execution_time >= 0
+                assert time_to_buffer >= 0
+                assert dependency_wait_time >= 0
+                assert time_spent_in_queue >= 0
+                assert model_fetching_time >= 0
+                assert execution_time >= 0
 
                 dataframe_tasks_log.loc[task_index] = [job.job_type_id, task.task_id, task.executing_worker_id, task.log.task_arrival_at_worker_buffer_timestamp, 
                                                        task.log.task_execution_start_timestamp,time_to_buffer, dependency_wait_time, 

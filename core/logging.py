@@ -35,9 +35,7 @@ class TaskLifeCycleTimestamp(object):
         """
         model fetch time for this task
         """
-        # assert self.task_front_queue_timestamp != 0 and self.task_execution_start_timestamp != 0
-        # assert self.task_execution_start_timestamp != 0
-        # TODO: check execution timestamp
+        assert self.task_front_queue_timestamp != 0 and self.task_execution_start_timestamp != 0
         return self.task_execution_start_timestamp - self.task_front_queue_timestamp
 
     def get_task_wait_time(self):
