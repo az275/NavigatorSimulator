@@ -262,3 +262,9 @@ WORKFLOW_LIST = [
     #            ]
     #  }
 ]
+
+def get_task_types(job_types: list[int]) -> list[tuple[int,int]]:
+    return [(jt, t["TASK_INDEX"]) for jt in job_types for t in WORKFLOW_LIST[jt]["TASKS"]]
+
+def get_model_id_for_task_type(task_type: tuple[int,int]) -> int:
+    return WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]

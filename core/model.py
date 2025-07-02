@@ -1,5 +1,8 @@
 from random import randint
 from core.workflow import *
+from core.config import *
+
+from scipy import stats
 
 
 class Model:
@@ -7,10 +10,18 @@ class Model:
     Description of Model
     """
 
-    def __init__(self, job_type_id, model_id, model_size):
+    def __init__(self, job_type_id, model_id, model_size, batch_sizes, batch_exec_times):
         self.job_type_id = job_type_id
         self.model_id = model_id
         self.model_size = model_size
+        self.batch_sizes = batch_sizes
+        self.batch_exec_times = batch_exec_times
+
+        self.exec_time_constants = {}
+        for partition_size in batch_exec_times.keys():
+            m, b, r, p, std_err = stats.linregress(self.batch_sizes,
+                                                   self.batch_exec_times[partition_size])
+            self.exec_time_constants[partition_size] = (m, b)
 
     def __hash__(self):
         return hash((self.job_type_id, self.model_id))
@@ -42,7 +53,11 @@ class Model:
             + str(self.model_size)
             + ")"
         )
-
+    
+    def get_exec_time(self, batch_size: int, partition_size: int) -> float:
+        m = self.exec_time_constants[partition_size][0]
+        b = self.exec_time_constants[partition_size][1]
+        return m * batch_size + b
 
 def parse_models_from_workflows() -> dict:
     """
@@ -57,7 +72,11 @@ def parse_models_from_workflows() -> dict:
         for model in WORKFLOW_LIST[i]["TASKS"]:
             if model["MODEL_ID"] != -1:
                 models.append(Model(
-                    job_type_id=job["JOB_TYPE"], model_id=model["MODEL_ID"], model_size=model["MODEL_SIZE"]))
+                    job_type_id=job["JOB_TYPE"], 
+                    model_id=model["MODEL_ID"], 
+                    model_size=model["MODEL_SIZE"],
+                    batch_sizes=model["BATCH_SIZES"],
+                    batch_exec_times=model["MIG_BATCH_EXEC_TIMES"]))
         job_models_dict[job["JOB_TYPE"]] = models
 
     # print(job_models_dict)

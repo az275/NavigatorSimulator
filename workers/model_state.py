@@ -145,7 +145,9 @@ class GPUState(object):
 
         if len(self._model_states) == 0:
             # mark when fetch begins and ends
-            self._model_states.append((start_time, [ModelState(model, ModelState.IN_FETCH)]))
+            self._model_states.append((start_time, [ModelState(model, ModelState.IN_FETCH,
+                                                               reserved_batch=reserved_batch,
+                                                               reserved_until=reserve_until)]))
             self._model_states.append((fetch_end_time, [ModelState(model, ModelState.PLACED, 
                                                                    reserved_batch=reserved_batch,
                                                                    reserved_until=reserve_until)]))
@@ -162,8 +164,12 @@ class GPUState(object):
         
         # add fetch start marker
         self._insert_state_marker(start_time,
-                                  lambda _, states: states.append(ModelState(model, ModelState.IN_FETCH)),
-                                  lambda t, states: states.append(ModelState(model, ModelState.IN_FETCH)) if t < fetch_end_time else None)
+                                  lambda _, states: states.append(ModelState(model, ModelState.IN_FETCH,
+                                                                             reserved_batch=reserved_batch,
+                                                                             reserved_until=reserve_until)),
+                                  lambda t, states: states.append(ModelState(model, ModelState.IN_FETCH,
+                                                                             reserved_batch=reserved_batch,
+                                                                             reserved_until=reserve_until)) if t < fetch_end_time else None)
 
     
     def evict_model(self, model: Model, start_time: float, evict_time: float, reserve_until=-1):
@@ -250,13 +256,14 @@ class GPUState(object):
             starting from [time]. When execution finishes, a call to
             [release_busy_copy] is required.
         """
-        assert(self.does_have_idle_copy(model, time))
+        assert(self.does_have_idle_copy(model, time) or 
+               any(s.model==model and s.state==ModelState.IN_FETCH for s in self.state_at(time)))
         assert(reserve_until > time)
 
         def _occupy_one_copy(timestamp, states):
             for j, state in enumerate(states):
                 if state.model.model_id == model.model_id and \
-                    state.state == ModelState.PLACED and \
+                    state.state in [ModelState.PLACED, ModelState.IN_FETCH] and \
                     not state.reserved_batch:
                     states[j].reserved_batch = reserved_batch
                     states[j].reserved_until = reserve_until
@@ -274,9 +281,26 @@ class GPUState(object):
         def _release_one_copy(timestamp, states):
             for i, state in enumerate(states):
                 if state.reserved_batch and state.reserved_batch.id == batch_id and \
-                    state.state == ModelState.PLACED:
+                    state.state in [ModelState.PLACED, ModelState.IN_FETCH]:
                     states[i].reserved_batch = None
                     states[i].reserved_until = -1
                     return
             assert(False) # no batch of [batch_id] found
         self._insert_state_marker(time, _release_one_copy, _release_one_copy)
+
+    def shortest_time_to_fetch_end(self, model_id: int, time: float) -> float:
+        """
+            If at least one copy of model with [model_id] is currently being fetched,
+            returns the time between [time] and the end of the fetch for the copy
+            which will finish fetching earliest.
+        """
+        current_fetching_count = sum(s.model.model_id==model_id and s.state==ModelState.IN_FETCH 
+                                     for s in self.state_at(time))
+        assert(current_fetching_count > 0)
+        for (timestamp, states) in self._model_states:
+            if timestamp >= time:
+                fetching_count = sum(s.model.model_id==model_id and s.state==ModelState.IN_FETCH 
+                                     for s in states)
+                if fetching_count < current_fetching_count:
+                    return timestamp - time
+        return -1

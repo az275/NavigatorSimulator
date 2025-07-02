@@ -77,7 +77,9 @@ class Job(object):
             if task_cfg["MODEL_ID"] > -1:
                 required_model_for_task = Model(job_type_id=job_cfg["JOB_TYPE"],
                                                 model_id=task_cfg["MODEL_ID"],
-                                                model_size=task_cfg["MODEL_SIZE"])
+                                                model_size=task_cfg["MODEL_SIZE"],
+                                                batch_sizes=task_cfg["BATCH_SIZES"],
+                                                batch_exec_times=task_cfg["MIG_BATCH_EXEC_TIMES"])
 
             current_task = Task(self,
                                 self.id,  # ID of the associated unique Job
