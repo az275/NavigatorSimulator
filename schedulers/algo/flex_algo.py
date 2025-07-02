@@ -6,8 +6,11 @@ from core.job import Job
 from core.batch import Batch
 from core.events import *
 from core.network import *
+from core.workflow import *
 
 from workers.worker import Worker
+
+from schedulers.centralized.shepherd.shepherd_state import ShepherdState
 
 
 class OrderedTask:
@@ -29,11 +32,11 @@ class OrderedTask:
         return self.__str__()
 
 
-def _flex_form_largest_batch(simulation, model_id: int, time: float) -> Batch:
+def _flex_form_largest_batch(state: ShepherdState, model_queue: list[OrderedTask], time: float) -> Batch:
     tasks = []
     skipped_tasks = []
-    while simulation.model_queues[model_id].qsize() > 0:
-        ot = simulation.model_queues[model_id].get()
+    while model_queue.qsize() > 0:
+        ot = model_queue.get()
         if time < ot.task.log.task_placed_on_worker_queue_timestamp:
             skipped_tasks.append(ot)
             continue
@@ -41,89 +44,98 @@ def _flex_form_largest_batch(simulation, model_id: int, time: float) -> Batch:
         if len(tasks) == tasks[0].max_batch_size:
             break
     for ot in skipped_tasks:
-        simulation.model_queues[model_id].put(ot)
-    simulation._batch_counter += 1
-    return Batch(simulation._batch_counter-1, tasks)
+        model_queue.put(ot)
+    state.update_batch_counter()
+    return Batch(state._batch_counter-1, tasks)
 
 
-def flex_schedule_job_on_arrival(simulation, job: Job, current_time: float):
+def _flex_get_largest_candidate_batch(task_types: list[tuple[int,int]], 
+                                      model_queues: dict[int, PriorityQueue], current_time: float):
+    """
+        Returns (model_id, batch_size) of the largest batch that can be formed from currently 
+        queued tasks across all of [model_queues] where model_id is required by some task in
+        [task_types].
+    """
+    largest_batch_model_id = -1
+    largest_batch_size = 0
+    for task_type in task_types:
+        mid = get_model_id_for_task_type(task_type)
+        if mid not in model_queues or model_queues[mid].qsize() == 0:
+            continue # no tasks queued
+        candidate_batch_size = min(len([t for t in model_queues[mid].queue if current_time >= t.task.log.task_placed_on_worker_queue_timestamp]),
+                                model_queues[mid].queue[0].task.max_batch_size)
+        if candidate_batch_size > largest_batch_size:
+            largest_batch_size = candidate_batch_size
+            largest_batch_model_id = mid
+    return (largest_batch_model_id, largest_batch_size)
+
+
+def flex_schedule_job_on_arrival(simulation, state: ShepherdState, model_queues: dict[int, PriorityQueue], job: Job, current_time: float):
     # TODO: priority by SLO? task queues are FCFS
+    arrived_groups = set()
     for task in job.tasks:
         if len(task.required_task_ids) == 0:
-            if task.model.model_id not in simulation.model_queues:
-                simulation.model_queues[task.model.model_id] = PriorityQueue()
-            simulation.model_queues[task.model.model_id].put(OrderedTask(task))
-    return flex_schedule_tasks_on_arrival(simulation, current_time)
+            if task.model.model_id not in model_queues:
+                model_queues[task.model.model_id] = PriorityQueue()
+            model_queues[task.model.model_id].put(OrderedTask(task))
+            arrived_groups.add(state.task_type_to_group[task.task_type])
 
-
-def flex_schedule_tasks_on_arrival(simulation, current_time: float, info_staleness=LOAD_INFORMATION_STALENESS):
     events = []
-    for worker in simulation.workers:
-        worker_models = worker.GPU_state.placed_models(max(0, current_time - info_staleness))
-        for model in worker_models:
-            curr_batch_size = 0
-            if model.model_id in simulation.worker_states[worker.worker_id]:
-                curr_batch = simulation.worker_states[worker.worker_id][model.model_id]
-                curr_batch_size = curr_batch.size() if not curr_batch is None else 0
-
-            if model.model_id not in simulation.model_queues:
-                continue # no tasks queued
-
-            model_queue = simulation.model_queues[model.model_id]
-            if model_queue.qsize() == 0: # no tasks queued
-                continue
-
-            largest_batch_size = min(len([t for t in model_queue.queue if current_time >= t.task.log.task_placed_on_worker_queue_timestamp]),
-                                     model_queue.queue[0].task.max_batch_size)
-            if largest_batch_size == 0: # no tasks queued for [current_time]
-                continue
-
-            if curr_batch_size == 0:
-                batch = _flex_form_largest_batch(simulation, model.model_id, current_time)
-                simulation.worker_states[worker.worker_id][model.model_id] = batch
-                events.append(EventOrders(
-                    current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                    BatchArrivalAtWorker(simulation, worker, batch)))
-            elif largest_batch_size >= FLEX_LAMBDA * curr_batch_size:
-                batch = _flex_form_largest_batch(simulation, model.model_id, current_time)
-                old_batch_id = simulation.worker_states[worker.worker_id][model.model_id].id
-                simulation.worker_states[worker.worker_id][model.model_id] = batch
-                events.append(EventOrders(
-                    current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                    BatchPreemptionAtWorker(simulation, worker, batch, old_batch_id)))
+    for group in arrived_groups:
+        events += flex_schedule_tasks_on_arrival(simulation, state, group, model_queues, current_time)
     return events
 
 
-def flex_schedule_on_batch_completion(simulation, worker: Worker, completed_batch: Batch, current_time: float, info_staleness=LOAD_INFORMATION_STALENESS):
-    # clear scheduler worker state iff not assigned to a new batch already
-    if simulation.worker_states[worker.worker_id][completed_batch.model.model_id].id == completed_batch.id:
-        simulation.worker_states[worker.worker_id][completed_batch.model.model_id] = None
-    
-    largest_batch = (-1, 0) # (model_id, batch size)
-    for model_id, task_queue in simulation.model_queues.items():
-        if task_queue.qsize() == 0:
-            continue
-
-        # static allocation
-        if all(m.model.model_id != model_id for m in worker.GPU_state.placed_model_states(max(0, current_time-info_staleness))):
-            continue
-
-        # already assigned
-        if simulation.worker_states[worker.worker_id][model_id]:
+def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int, model_queues: dict[int, PriorityQueue], 
+                                   current_time: float):
+    """
+        Given [workers] available to the group to which the arrived Task's type are assigned to,
+        finds the largest runnable batch across all model queues assigned to this group and
+        attempts to execute the batch if there is an idle worker or some worker has a batch that
+        can be preempted.
+    """
+    events = []
+    for worker in state.worker_groups[group]:
+        # NOTE: workers are assumed to run only 1 batch at a time
+        curr_batch = state.worker_states[worker.worker_id]
+        curr_batch_size = curr_batch.size() if not curr_batch is None else 0
+        largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
+            state.group_task_types[group], model_queues, current_time)
+        
+        if largest_batch_size == 0:
             continue
         
-        curr_largest_possible = min(len([t for t in task_queue.queue if current_time >= t.task.log.task_placed_on_worker_queue_timestamp]),
-                                    task_queue.queue[0].task.max_batch_size)
-        if curr_largest_possible == 0:
-            continue
-        elif curr_largest_possible > largest_batch[1]:
-            largest_batch = (model_id, curr_largest_possible)
+        if curr_batch_size == 0:
+            batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
+            state.assign_batch_to_worker(worker.worker_id, batch)
+            events.append(EventOrders(
+                current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
+                BatchArrivalAtWorker(simulation, worker, batch)))
+        elif largest_batch_size >= FLEX_LAMBDA * curr_batch_size:
+            batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
+            old_batch_id = state.worker_states[worker.worker_id].id
+            state.preempt_batch_on_worker(worker.worker_id, batch)
+            events.append(EventOrders(
+                current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
+                BatchPreemptionAtWorker(simulation, worker, batch, old_batch_id)))
+    return events
+
+
+def flex_schedule_on_batch_completion(simulation, state: ShepherdState, model_queues: dict[int, PriorityQueue], 
+                                      worker: Worker, completed_batch: Batch, current_time: float):
+    # if alr. assigned to a new batch do nothing
+    if state.worker_states[worker.worker_id].id != completed_batch.id:
+        return []
     
-    if largest_batch[1] > 0:
-        batch = _flex_form_largest_batch(simulation, largest_batch[0], current_time)
-        simulation.worker_states[worker.worker_id][batch.model.model_id] = batch
+    state.worker_completed_batch(worker.worker_id, completed_batch)
+    
+    largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
+        state.group_task_types[state.task_type_to_group[completed_batch.tasks[0].task_type]], 
+        model_queues, current_time)
+    if largest_batch_size > 0:
+        batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
+        state.assign_batch_to_worker(worker.worker_id, batch)
         return [EventOrders(
             current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
             BatchArrivalAtWorker(simulation, worker, batch))]
-    
     return []
