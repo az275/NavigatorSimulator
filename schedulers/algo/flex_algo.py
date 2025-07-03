@@ -12,6 +12,8 @@ from workers.worker import Worker
 
 from schedulers.centralized.shepherd.shepherd_state import ShepherdState
 
+# import numpy as np
+
 
 class OrderedTask:
     """
@@ -20,7 +22,7 @@ class OrderedTask:
 
     def __init__(self, task: Task):
         self.task = task
-        self.priority = -task.log.task_arrival_at_scheduler_timestamp
+        self.priority = task.log.task_arrival_at_scheduler_timestamp
 
     def __lt__(self, other):
         return self.priority < other.priority
@@ -89,35 +91,46 @@ def flex_schedule_job_on_arrival(simulation, state: ShepherdState, model_queues:
 def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int, model_queues: dict[int, PriorityQueue], 
                                    current_time: float):
     """
-        Given [workers] available to the group to which the arrived Task's type are assigned to,
-        finds the largest runnable batch across all model queues assigned to this group and
-        attempts to execute the batch if there is an idle worker or some worker has a batch that
-        can be preempted.
+        While there are unchecked workers and queued tasks, creates the largest batch
+        possible across all models and attempts to assign a worker to the batch in order
+        of decreasing estimated execution start time.
     """
     events = []
-    for worker in state.worker_groups[group]:
+    unassigned_workers = state.worker_groups[group].copy()
+    largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
+        state.group_task_types[group], model_queues, current_time)
+    while unassigned_workers and largest_batch_size > 0:
+        best_worker = min(unassigned_workers,
+                          key=lambda w: w.get_wait_time(current_time, largest_batch_model_id))
+        
         # NOTE: workers are assumed to run only 1 batch at a time
-        curr_batch = state.worker_states[worker.worker_id]
+        curr_batch = state.worker_states[best_worker.worker_id]
         curr_batch_size = curr_batch.size() if not curr_batch is None else 0
-        largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
-            state.group_task_types[group], model_queues, current_time)
-        
-        if largest_batch_size == 0:
-            continue
-        
+
         if curr_batch_size == 0:
+            # assign batch to best worker
             batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
-            state.assign_batch_to_worker(worker.worker_id, batch)
+            state.assign_batch_to_worker(best_worker.worker_id, batch)
             events.append(EventOrders(
                 current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                BatchArrivalAtWorker(simulation, worker, batch)))
+                BatchArrivalAtWorker(simulation, best_worker, batch)))
+            # update candidate batch
+            largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
+                state.group_task_types[group], model_queues, current_time)
         elif largest_batch_size >= FLEX_LAMBDA * curr_batch_size:
+            # assign batch to best worker
             batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
-            old_batch_id = state.worker_states[worker.worker_id].id
-            state.preempt_batch_on_worker(worker.worker_id, batch)
+            old_batch_id = state.worker_states[best_worker.worker_id].id
+            state.preempt_batch_on_worker(best_worker.worker_id, batch)
             events.append(EventOrders(
                 current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                BatchPreemptionAtWorker(simulation, worker, batch, old_batch_id)))
+                BatchPreemptionAtWorker(simulation, best_worker, batch, old_batch_id)))
+            # update candidate batch
+            largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
+                state.group_task_types[group], model_queues, current_time)
+        
+        # remove worker from consideration
+        unassigned_workers.remove(best_worker)
     return events
 
 
