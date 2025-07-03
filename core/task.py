@@ -1,6 +1,7 @@
 from scipy import stats
 from core.logging import *
 import numpy as np
+from core.config import *
 
 
 class Task(object):
@@ -53,9 +54,7 @@ class Task(object):
     
     def get_batch_exec_time(self, batch_size: int, partition_size: int):
         assert(batch_size <= self.max_batch_size)
-        m, b, r, p, std_err = stats.linregress(self.batch_sizes, 
-                                               self.mig_batch_exec_time[partition_size])
-        exact_exec_time = m * batch_size + b
+        exact_exec_time = self.model.get_exec_time(batch_size, partition_size)
         stddev = self.exec_time_cv * exact_exec_time
         randomized_time = np.random.normal(loc=exact_exec_time, scale=stddev, size=1)
         return randomized_time[0]
