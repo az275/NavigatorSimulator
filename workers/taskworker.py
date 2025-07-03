@@ -74,7 +74,7 @@ class TaskWorker(Worker):
         can_run = self.can_run_task(current_time, batch.model)
         if can_run == self._CAN_RUN_ON_EVICT:
             current_time += self.evict_models_from_GPU_until(
-                current_time, batch.model.model_size, self.LOOKAHEAD_EVICTION)
+                current_time, batch.model.model_size, self.FCFS_EVICTION)
         
         if can_run == self._CAN_RUN_NOW or can_run == self._CAN_RUN_ON_EVICT:
             batch_end_events, task_end_time = self.batch_execute(batch, current_time)
@@ -100,10 +100,17 @@ class TaskWorker(Worker):
             if self.GPU_state.does_have_idle_copy(batch.model, current_time):
                 self.GPU_state.reserve_idle_copy(
                     batch.model, current_time, batch, current_time+batch_exec_time)
+            elif any(s.model == batch.model and s.state == ModelState.IN_FETCH 
+                     for s in self.GPU_state.state_at(current_time)):
+                # NOTE: assumes any model of this ID being fetched is NOT reserved for any other batch
+                model_fetch_time = self.GPU_state.shortest_time_to_fetch_end(batch.model.model_id, current_time)
+                self.GPU_state.reserve_idle_copy( # problem: not marked idle earlier
+                    batch.model, current_time, batch, 
+                    current_time+model_fetch_time+batch_exec_time)
             else:
-                assert(False)
+                # assert(False)
                 model_fetch_time = self.fetch_model(
-                    batch.model, current_time, batch, exec_time=batch_exec_time)
+                    batch.model, batch, current_time, exec_time=batch_exec_time)
         
         batch.front_queue_timestamp = current_time
         batch.execution_start_timestamp = current_time + model_fetch_time

@@ -125,7 +125,7 @@ class Worker(object):
 
         models_to_evict = []
         for state in placed_model_states:
-            if not state.is_reserved_for_batch:
+            if not state.reserved_batch:
                 curr_memory += state.model.model_size
                 models_to_evict.append(state.model)
                 if curr_memory >= min_required_memory:

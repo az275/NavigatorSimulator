@@ -52,6 +52,14 @@ class Simulation_central(Simulation):
                 task_type_assignments[task_types[sid]] = group_id
 
             self.state = ShepherdState(worker_groups, task_type_assignments)
+
+            for worker in self.workers:
+                # randomly choose a model to prefetch
+                group_model_ids = self.state.group_models[worker.group_id]
+                preloaded_model_id = np.random.choice(list(group_model_ids))
+                preloaded_model = [m for m in models_by_wf[0] if m.model_id == preloaded_model_id][0]
+                worker.GPU_state.prefetch_model(preloaded_model)
+
             self.initialize_external_clients()
         else:
             super().initialize_workers()
