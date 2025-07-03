@@ -9,13 +9,24 @@ from schedulers.algo.flex_algo import *
 
 
 class ShepherdWorker(TaskWorker):
-    def __init__(self, simulation, worker_id, total_memory):
+    def __init__(self, simulation, worker_id, total_memory, group_id):
         super().__init__(simulation, worker_id, total_memory)
+        self.group_id = group_id
 
     def free_slot(self, current_time, batch: Batch, task_type):
         """ Attempts to launch another task. """
         events = super().free_slot(current_time, batch, task_type)
-        events += flex_schedule_on_batch_completion(self.simulation, self, batch, current_time)
+        events += flex_schedule_on_batch_completion(
+            self.simulation, self.simulation.state, self.simulation.model_queues,
+            self, batch, current_time)
+        return events
+    
+    def maybe_start_batch(self, batch, current_time):
+        events = super().maybe_start_batch(batch, current_time)
+        if not events:
+            return [EventOrders(
+                current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size),
+                BatchRejectionAtWorker(self.simulation, self, batch))]
         return events
     
     def preempt_batch(self, old_batch_id: int, new_batch: Batch, current_time: float):
@@ -41,3 +52,21 @@ class ShepherdWorker(TaskWorker):
                 current_time + CPU_to_CPU_delay(task.result_size), 
                 TasksArrivalAtScheduler(self.simulation, new_tasks))]
         return []
+    
+    def get_wait_time(self, current_time: float, model_id: int) -> float:
+        if model_id < 0:
+            return 0 # GPU not needed
+        
+        if any(s.model.model_id == model_id and not s.reserved_batch 
+               for s in self.GPU_state.placed_model_states(current_time)):
+            return 0 # model available
+        
+        if all(m.model_id != model_id for m in self.GPU_state.placed_models(current_time)):
+            all_models = [m for wf in list(self.simulation.metadata_service.job_type_models.values()) for m in wf]
+            model = [m for m in all_models if m.model_id == model_id][0]
+            fetch_time = SameMachineCPUtoGPU_delay(model.model_size)
+            return fetch_time # model must be fetched
+        else: # NOTE: does not allow > 1 copy of 1 model
+            time_to_free = min(s.reserved_until for s in self.GPU_state.placed_model_states(current_time) 
+                                if s.model.model_id == model_id) - current_time
+            return time_to_free # time remaining until model becomes available
