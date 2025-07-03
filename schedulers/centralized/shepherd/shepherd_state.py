@@ -29,7 +29,8 @@ class ShepherdState:
         self.worker_states[worker_id] = None
 
     def worker_rejected_batch(self, worker_id: int, batch: Batch):
-        assert(self.worker_states[worker_id] == batch)
+        if self.worker_states[worker_id] != batch:
+            return
         self.worker_states[worker_id] = None
 
     def preempt_batch_on_worker(self, worker_id: int, new_batch: Batch):

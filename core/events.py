@@ -124,7 +124,7 @@ class BatchRejectionAtWorker(Event):
         self.batch = batch
 
     def run(self, current_time):
-        assert self.simulation.state.worker_states[self.worker.worker_id].id == self.batch.id
+        # assert self.simulation.state.worker_states[self.worker.worker_id].id == self.batch.id
         self.simulation.state.worker_rejected_batch(self.worker.worker_id, self.batch)
         return [EventOrders(current_time, TasksArrivalAtScheduler(self.simulation, self.batch.tasks))] # reschedule batch
 
@@ -145,7 +145,8 @@ class BatchArrivalAtWorker(Event):
     def run(self, current_time):
         # NOTE: Sends back tasks if busy (shepherd) or doesn't have model (static heft)  
         if (self.simulation.simulation_name != "shepherd" and not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time)) or \
-            (self.simulation.simulation_name == "shepherd" and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))):
+            (self.simulation.simulation_name == "shepherd" and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))) or \
+                self.worker.did_abandon_batch(self.batch.id):
             return [EventOrders(current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size), 
                                 BatchRejectionAtWorker(self.simulation, self.worker, self.batch))]
         for task in self.batch.tasks:
