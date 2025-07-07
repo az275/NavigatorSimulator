@@ -34,6 +34,7 @@ def plot_response_time_vs_arrival_time(job_df, out_path, plot_title_prefix):
 
     plt.legend()
     plt.savefig(os.path.join(out_path, "response_vs_arrival.png"))
+    plt.close()
 
 
 def plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix):
@@ -42,23 +43,42 @@ def plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix):
     for task_type in task_types:
         df = batch_df[(batch_df["workflow_id"]==task_type[0]) & (batch_df["task_id"]==task_type[1])]
         
+        for wid in set(df["worker_id"]):
+            fig = plt.figure(figsize=(10, 6))
+            plt.scatter(
+                df[df["worker_id"]==wid]["start_time"],
+                df[df["worker_id"]==wid]["batch_size"],
+                s=6
+            )
+            plt.yticks(np.arange(2, df[df["worker_id"]==wid]["batch_size"].max()+1, 2))
+            plt.xlabel("Batch exec start time (ms since start)")
+            plt.ylabel("Batch size")
+            plt.title(f"{plot_title_prefix}\nWorker {wid} Batch Size vs. Time for Task {task_type[1]}")
+            
+            plt.savefig(os.path.join(out_path, f"w{wid}_wf_{task_type[0]}_task_{task_type[1]}_batch_size_vs_time.png"))
+            plt.close()
+        
         fig = plt.figure(figsize=(10, 6))
 
-        plt.scatter(
-            df["time"],
-            df["batch_size"],
-            label=f"Job type {task_type[0]}, Task {task_type[1]}",
-            s=4
-        )
+        for wid in set(df["worker_id"]):
+            plt.scatter(
+                df[df["worker_id"]==wid]["start_time"],
+                df[df["worker_id"]==wid]["batch_size"],
+                label=f"Worker {wid}",
+                s=8
+            )
     
+        plt.yticks(np.arange(2, df["batch_size"].max()+1, 2))
         plt.xlabel("Batch exec start time (ms since start)")
         plt.ylabel("Batch size")
-        plt.title(f"{plot_title_prefix}\nBatch Size vs. Time for Task {task_type[1]}")
+        plt.title(f"{plot_title_prefix}\nBatch Size vs. Time for Task {task_type[1]} By Worker")
 
         plt.legend()
         plt.savefig(os.path.join(out_path, f"wf_{task_type[0]}_task_{task_type[1]}_batch_size_vs_time.png"))
 
         plt.close()
+        
+    
 
 
 def plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix):
@@ -66,7 +86,7 @@ def plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix):
 
     for task_type in task_types:
         df = batch_df[(batch_df["workflow_id"]==task_type[0]) & (batch_df["task_id"]==task_type[1])]
-        unique_batch_sizes = set(df["batch_size"])
+        unique_batch_sizes = sorted(set(df["batch_size"]))
 
         fig = plt.figure(figsize=(8, 6))
         batch_size_counts = list(map(lambda size: (df["batch_size"] == size).sum(), 
@@ -150,12 +170,7 @@ def gen_per_task_stats(task_df, out_path):
                 task_stat_df.loc[task_df_row_i, f"p99_{stat}"] = task_stat_data[stat].quantile(0.99)
 
     task_stat_df.to_csv(os.path.join(out_path, "per_task_avgs.csv"))
-    
 
-def gen_stats(job_df, event_df):
-    print(f"Mean response time: {job_df["response_time"].mean()}, Max: {job_df["response_time"].max()}")
-    # print(f"TPUT: {len(job_df) / event_df.loc[len(events_df)-1]["time"]}")
-    
 
 def plot_model_loading_histogram(model_df, out_path):
     fig = plt.figure(figsize=(8, 6))
@@ -167,6 +182,7 @@ def plot_model_loading_histogram(model_df, out_path):
     plt.title(f"Model Loading Over Time")
 
     plt.savefig(os.path.join(out_path, f"model_loading_hist.png"))
+    plt.close()
 
 
 def plot_model_eviction_histogram(model_df, out_path):
@@ -179,7 +195,31 @@ def plot_model_eviction_histogram(model_df, out_path):
     plt.title(f"Model Eviction Over Time")
 
     plt.savefig(os.path.join(out_path, f"model_eviction_hist.png"))
+    plt.close()
 
+import seaborn as sns
+
+def plot_per_task_type_latency_cdf(task_df, out_path, plot_title_prefix):
+    workflows = set(task_df["workflow_type"])
+    for workflow in [int(w) for w in workflows]:
+        wf_df = task_df[task_df["workflow_type"]==workflow]
+        task_types = set(wf_df["task_id"])
+        for task_type in [int(t) for t in task_types]:
+            times = wf_df[wf_df["task_id"]==task_type]["execution_time"]
+        
+            mean = round(np.mean(times), 2)
+            median = round(np.median(times), 2)
+            percentile_95 = round(np.percentile(times, 95), 2)
+            variance = round(np.var(times), 2)
+
+            sns.set_theme()
+            sns.kdeplot(data=times, cumulative=True)
+            plt.xlabel(f"Task execution time (ms)")
+            plt.title(f"{plot_title_prefix}\nWorkflow {workflow} Task {task_type} Execution Time CDF")
+            plt.annotate(f"Mean: {mean}\nMedian: {median}\nVariance: {variance}\n95th percentile: {percentile_95}",xy=(0.02, 0.8), xycoords="axes fraction", fontsize=12)
+            plt.savefig(os.path.join(out_path, f'workflow_{workflow}_task_{task_type}_latency_cdf_plot.png'))
+            plt.close()
+        
 
 def verify_job_creation_and_arrival(event_df):
     creation_events = event_df[event_df["event"].str.contains("Job Creation")]
@@ -209,13 +249,14 @@ if __name__ == "__main__":
     event_df = pd.read_csv(os.path.join(results_dir_path, 'events_by_time.csv'))
     batch_df = pd.read_csv(os.path.join(results_dir_path, 'batch_log.csv'))
 
-    # model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
-    # plot_model_loading_histogram(model_df, out_path)
-    # plot_model_eviction_histogram(model_df, out_path)
+    model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
+    plot_model_loading_histogram(model_df, out_path)
+    plot_model_eviction_histogram(model_df, out_path)
 
     plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix)
     plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix)
     plot_response_time_vs_arrival_time(job_df, out_path, plot_title_prefix)
+    plot_per_task_type_latency_cdf(task_df, out_path, plot_title_prefix)
 
     stats_by_task_type(task_df, batch_df, out_path)
     verify_job_creation_and_arrival(event_df)
