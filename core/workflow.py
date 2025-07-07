@@ -90,20 +90,20 @@ WORKFLOW_LIST = [
                 "TASK_INDEX": 0,
                 "PREV_TASK_INDEX": [],
                 "NEXT_TASK_INDEX": [1],
-                "MODEL_SIZE": 10525000,      # in kB
+                "MODEL_SIZE": 6093000,      # in kB
                 "INPUT_SIZE": 1000,
                 "OUTPUT_SIZE": 2,            # in kB
-                "EXECUTION_TIME": 66,        # avg time, in ms
-                "MAX_BATCH_SIZE": 10,
+                "EXECUTION_TIME": 65,        # avg time, in ms
+                "MAX_BATCH_SIZE": 8,
                 "MAX_WAIT_TIME": 1,          # ms
-                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-                "BATCH_EXEC_TIME": [66, 68, 70, 73, 76, 90],
+                "BATCH_SIZES": [1, 2, 4, 8],
+                "BATCH_EXEC_TIME": [65.0, 68.0, 69.4, 72.1],
                 "MIG_BATCH_EXEC_TIMES": {
-                    24: [66, 68, 70, 73, 76, 90],
-                    12: [37, 39, 40, 41, 43, 51]
+                    24: [65.0, 68.0, 69.4, 72.1],
+                    12: [65.0, 68.0, 69.4, 72.1] # TODO: update with real nums
                 },
                 "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-               {"MODEL_NAME": "encode_search",
+               {"MODEL_NAME": "encode_search-ivf",
                 "MODEL_ID": 5,
                 "TASK_INDEX": 1,
                 "PREV_TASK_INDEX": [0],
@@ -111,15 +111,15 @@ WORKFLOW_LIST = [
                 "MODEL_SIZE": 1210000,       # in kB
                 "INPUT_SIZE": 2,
                 "OUTPUT_SIZE": 2,
-                "EXECUTION_TIME": 17.4,      # in ms
-                "MAX_BATCH_SIZE": 10,
+                "EXECUTION_TIME": 16.7,      # in ms
+                "MAX_BATCH_SIZE": 8,
                 "MAX_WAIT_TIME": 1,          # ms
-                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-                "BATCH_EXEC_TIME": [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
+                "BATCH_SIZES": [1, 2, 4, 8],
+                "BATCH_EXEC_TIME": [16.7, 17.2, 17.5, 17.5],
                 "MIG_BATCH_EXEC_TIMES": {
-                    24: [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
-                    12: [14, 14.8, 14.8, 14.8, 15.7, 15.7],
-                    6: [12.3, 13.0, 13.0, 13.0, 13.8, 13.8]
+                    24: [16.7, 17.2, 17.5, 17.5], # TODO [0.397, 0.405, 0.424, 0.456],
+                    12: [16.7, 17.2, 17.5, 17.5],
+                    6: [16.5, 16.9, 16.9, 17.3]
                 },
                 "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
                {"MODEL_NAME": "text_check",
@@ -127,138 +127,33 @@ WORKFLOW_LIST = [
                 "TASK_INDEX": 2,
                 "PREV_TASK_INDEX": [1],
                 "NEXT_TASK_INDEX": [3],
-                "MODEL_SIZE": 7383000,       # in kB
+                "MODEL_SIZE": 2101000,       # in kB
                 "INPUT_SIZE": 2,
                 "OUTPUT_SIZE": 2,
-                "EXECUTION_TIME": 17,        # in ms
-                "MAX_BATCH_SIZE": 10,
+                "EXECUTION_TIME": 3.36,        # in ms
+                "MAX_BATCH_SIZE": 2,
                 "MAX_WAIT_TIME": 1,          # ms
-                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-                "BATCH_EXEC_TIME": [17, 25, 45, 67.5, 90, 112.5],
+                "BATCH_SIZES": [1, 2],
+                "BATCH_EXEC_TIME": [3.36, 3.72],
                 "MIG_BATCH_EXEC_TIMES": {
-                    24: [17, 25, 45, 67.5, 90, 112.5],
-                    12: [8.3, 12, 22, 33, 44, 55],
-                    6: [4.8, 7.1, 13, 19.1, 25, 32]
+                    24: [3.36, 3.72], 12: [4.04, 3.97], 6: [5.66, 9.51]
                 },
                 "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-               {"MODEL_NAME": "aggregate",
+               {"MODEL_NAME": "aggregate-tts",
                 "MODEL_ID": 7,
                 "TASK_INDEX": 3,
                 "PREV_TASK_INDEX": [1,2],
                 "NEXT_TASK_INDEX": [],
-                "MODEL_SIZE": 0,             # in kB
+                "MODEL_SIZE": 6135000,             # in kB
                 "INPUT_SIZE": 4,
                 "OUTPUT_SIZE": 4,
-                "EXECUTION_TIME": 1,         # in ms
-                "MAX_BATCH_SIZE": 10,
+                "EXECUTION_TIME": 87.3,         # in ms
+                "MAX_BATCH_SIZE": 1,
                 "MAX_WAIT_TIME": 1,          # ms
-                "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-                "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1],
-                "MIG_BATCH_EXEC_TIMES": {
-                    24: [1, 1, 1, 1, 1, 1],
-                    12: [1, 1, 1, 1, 1, 1]
-                },
+                "BATCH_SIZES": [1],
+                "BATCH_EXEC_TIME": [87.3],
+                "MIG_BATCH_EXEC_TIMES": {24: [87.3], 12: [149.3]},
                 "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05}
                ]
-     },
-    # multitenant case:
-    #  {"JOB_TYPE": 1,
-    #  "JOB_NAME": "tts",
-    #  # the minimum amount of time necessary to execute the whole job
-    #  "BEST_EXEC_TIME": 101.4,
-    #  "TASKS": [{"MODEL_NAME": "audio_det",
-    #             "MODEL_ID": 4,
-    #             "TASK_INDEX": 0,
-    #             "PREV_TASK_INDEX": [],
-    #             "NEXT_TASK_INDEX": [1],
-    #             "MODEL_SIZE": 10525000,      # in kB
-    #             "INPUT_SIZE": 1000,
-    #             "OUTPUT_SIZE": 2,            # in kB
-    #             "EXECUTION_TIME": 66,        # avg time, in ms
-    #             "MAX_BATCH_SIZE": 10,
-    #             "MAX_WAIT_TIME": 1,          # ms
-    #             "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-    #             "BATCH_EXEC_TIME": [66, 68, 70, 73, 76, 90],
-    #             "MIG_BATCH_EXEC_TIMES": {
-    #                 24: [66, 68, 70, 73, 76, 90],
-    #                 12: [37, 39, 40, 41, 43, 51]
-    #             },
-    #             "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-    #            {"MODEL_NAME": "encode_search",
-    #             "MODEL_ID": 5,
-    #             "TASK_INDEX": 1,
-    #             "PREV_TASK_INDEX": [0],
-    #             "NEXT_TASK_INDEX": [2],
-    #             "MODEL_SIZE": 1210000,       # in kB
-    #             "INPUT_SIZE": 2,
-    #             "OUTPUT_SIZE": 2,
-    #             "EXECUTION_TIME": 17.4,      # in ms
-    #             "MAX_BATCH_SIZE": 10,
-    #             "MAX_WAIT_TIME": 1,          # ms
-    #             "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-    #             "BATCH_EXEC_TIME": [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
-    #             "MIG_BATCH_EXEC_TIMES": {
-    #                 24: [17.4, 18.4, 18.4, 18.4, 19.5, 19.5],
-    #                 12: [14, 14.8, 14.8, 14.8, 15.7, 15.7],
-    #                 6: [12.3, 13.0, 13.0, 13.0, 13.8, 13.8]
-    #             },
-    #             "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-    #             {"MODEL_NAME": "text_encoder",
-    #             "MODEL_ID": 0,
-    #             "TASK_INDEX": 2,
-    #             "PREV_TASK_INDEX": [1],
-    #             "NEXT_TASK_INDEX": [3,4],
-    #             "MODEL_SIZE": 5100000, # 5677000,       # in kB
-    #             "INPUT_SIZE": 1,
-    #             "OUTPUT_SIZE": 2,            # in kB
-    #             "EXECUTION_TIME": 10,        # avg time, in ms
-    #             "MAX_BATCH_SIZE": 6,
-    #             "MAX_WAIT_TIME": 1,         # ms
-    #             "BATCH_SIZES": [1, 2, 4, 6],
-    #             "BATCH_EXEC_TIME": [10, 10, 10, 11],
-    #             "MIG_BATCH_EXEC_TIMES": {
-    #                 24: [10, 10, 10, 11],
-    #                 12: [9, 9, 9, 10],
-    #                 6: [7, 7, 7, 8]
-    #             },
-    #             "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-    #            {"MODEL_NAME": "text_check",
-    #             "MODEL_ID": 6,
-    #             "TASK_INDEX": 3,
-    #             "PREV_TASK_INDEX": [2],
-    #             "NEXT_TASK_INDEX": [4],
-    #             "MODEL_SIZE": 7383000,       # in kB
-    #             "INPUT_SIZE": 2,
-    #             "OUTPUT_SIZE": 2,
-    #             "EXECUTION_TIME": 17,        # in ms
-    #             "MAX_BATCH_SIZE": 10,
-    #             "MAX_WAIT_TIME": 1,          # ms
-    #             "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-    #             "BATCH_EXEC_TIME": [17, 25, 45, 67.5, 90, 112.5],
-    #             "MIG_BATCH_EXEC_TIMES": {
-    #                 24: [17, 25, 45, 67.5, 90, 112.5],
-    #                 12: [8.3, 12, 22, 33, 44, 55],
-    #                 6: [4.8, 7.1, 13, 19.1, 25, 32]
-    #             },
-    #             "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
-    #            {"MODEL_NAME": "aggregate",
-    #             "MODEL_ID": 7,
-    #             "TASK_INDEX": 4,
-    #             "PREV_TASK_INDEX": [2,3],
-    #             "NEXT_TASK_INDEX": [],
-    #             "MODEL_SIZE": 0,             # in kB
-    #             "INPUT_SIZE": 4,
-    #             "OUTPUT_SIZE": 4,
-    #             "EXECUTION_TIME": 1,         # in ms
-    #             "MAX_BATCH_SIZE": 10,
-    #             "MAX_WAIT_TIME": 1,          # ms
-    #             "BATCH_SIZES": [1, 2, 4, 6, 8, 10],
-    #             "BATCH_EXEC_TIME": [1, 1, 1, 1, 1, 1],
-    #             "MIG_BATCH_EXEC_TIMES": {
-    #                 24: [1, 1, 1, 1, 1, 1],
-    #                 12: [1, 1, 1, 1, 1, 1]
-    #             },
-    #             "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05}
-    #            ]
-    #  }
+     }
 ]
