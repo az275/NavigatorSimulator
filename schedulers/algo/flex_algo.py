@@ -103,6 +103,11 @@ def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int,
         best_worker = min(unassigned_workers,
                           key=lambda w: w.get_wait_time(current_time, largest_batch_model_id))
         
+        # when it is impossible for worker to load model for some reason
+        if best_worker.get_wait_time(current_time, largest_batch_model_id) == np.inf:
+            unassigned_workers.remove(best_worker)
+            continue
+
         # NOTE: workers are assumed to run only 1 batch at a time
         curr_batch = state.worker_states[best_worker.worker_id]
         curr_batch_size = curr_batch.size() if not curr_batch is None else 0
