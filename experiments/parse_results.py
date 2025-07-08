@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from core.workflow import *
+from core.config import *
 from functools import reduce
 
 import numpy as np
@@ -222,14 +223,22 @@ def plot_per_task_type_latency_cdf(task_df, out_path, plot_title_prefix):
         
 
 def verify_job_creation_and_arrival(event_df):
-    creation_events = event_df[event_df["event"].str.contains("Job Creation")]
-    print(f"Creation mean: {creation_events['time'].diff().mean()}")
+    creation_events = event_df[event_df["event"].str.contains("Job Arrival")]
+    # print(f"Creation mean: {creation_events['time'].diff().mean()}")
 
-    unique_workers = set(event_df["worker_id"])
-    for wid in unique_workers:
-        if wid >= 0:
-            arrival_events = event_df[(event_df["event"].str.contains("Job Arrival")) & (event_df["worker_id"]==wid)]
-            print(f"WID {wid} Arrival mean: {arrival_events['time'].diff().mean()}")
+    prev = 0
+    for itvl in SEND_RATE_CHANGE_INTERVALS + [len(creation_events)]:
+        print(f"Query {prev} ~ {prev + itvl}")
+        print(f"Mean creation interval: {creation_events.iloc[prev:(prev+itvl)]['time'].diff().mean()}")
+        print(f"Std creation interval: {creation_events.iloc[prev:(prev+itvl)]['time'].diff().std()}")
+        print("=================================================")
+        prev += itvl
+
+    # unique_workers = set(event_df["worker_id"])
+    # for wid in unique_workers:
+    #     if wid >= 0:
+    #         arrival_events = event_df[(event_df["event"].str.contains("Job Arrival")) & (event_df["worker_id"]==wid)]
+    #         print(f"WID {wid} Arrival mean: {arrival_events['time'].diff().mean()}")
 
 
 if __name__ == "__main__":
