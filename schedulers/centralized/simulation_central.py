@@ -68,8 +68,16 @@ class Simulation_central(Simulation):
     def initialize_workers(self):
         if self.simulation_name == "shepherd":
             self.workers = []
+
+            # herd allocation:
             self.run_herd_scheduler(0)
             self.initialize_external_clients()
+            
+            # vortex allocation:
+            # super().initialize_workers()
+            # self.state = ShepherdState(
+            #     [self.workers],
+            #     { tt: 0 for tt in get_task_types(self.job_types_list) })
         else:
             super().initialize_workers()
 
