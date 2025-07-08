@@ -56,7 +56,7 @@ def plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix):
             plt.ylabel("Batch size")
             plt.title(f"{plot_title_prefix}\nWorker {wid} Batch Size vs. Time for Task {task_type[1]}")
             
-            plt.savefig(os.path.join(out_path, f"w{wid}_wf_{task_type[0]}_task_{task_type[1]}_batch_size_vs_time.png"))
+            plt.savefig(os.path.join(out_path, f"pipeline{task_type[0]+1}", f"task{task_type[1]}", f"worker{wid}_batch_size_vs_time.png"))
             plt.close()
         
         fig = plt.figure(figsize=(10, 6))
@@ -75,12 +75,10 @@ def plot_batch_size_vs_batch_start(batch_df, out_path, plot_title_prefix):
         plt.title(f"{plot_title_prefix}\nBatch Size vs. Time for Task {task_type[1]} By Worker")
 
         plt.legend()
-        plt.savefig(os.path.join(out_path, f"wf_{task_type[0]}_task_{task_type[1]}_batch_size_vs_time.png"))
+        plt.savefig(os.path.join(out_path, f"pipeline{task_type[0]+1}", f"task{task_type[1]}", f"batch_size_vs_time_by_worker.png"))
 
         plt.close()
         
-    
-
 
 def plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix):
     task_types = list(map(tuple, batch_df[['workflow_id', 'task_id']].drop_duplicates().values))
@@ -100,7 +98,7 @@ def plot_batch_size_bar_chart(batch_df, out_path, plot_title_prefix):
         plt.ylabel("Number of batches")
         plt.title(f"{plot_title_prefix}\nBatch sizes over execution for task {task_type[1]}")
 
-        plt.savefig(os.path.join(out_path, f"wf_{task_type[0]}_task_{task_type[1]}_batch_size_bar_plot.png"))
+        plt.savefig(os.path.join(out_path, f"pipeline{task_type[0]+1}", f"task{task_type[1]}", f"batch_size_bar_plot.png"))
         plt.close()
 
 
@@ -218,7 +216,7 @@ def plot_per_task_type_latency_cdf(task_df, out_path, plot_title_prefix):
             plt.xlabel(f"Task execution time (ms)")
             plt.title(f"{plot_title_prefix}\nWorkflow {workflow} Task {task_type} Execution Time CDF")
             plt.annotate(f"Mean: {mean}\nMedian: {median}\nVariance: {variance}\n95th percentile: {percentile_95}",xy=(0.02, 0.8), xycoords="axes fraction", fontsize=12)
-            plt.savefig(os.path.join(out_path, f'workflow_{workflow}_task_{task_type}_latency_cdf_plot.png'))
+            plt.savefig(os.path.join(out_path, f"pipeline{workflow+1}", f"task{task_type}", f'latency_cdf_plot.png'))
             plt.close()
         
 
@@ -257,8 +255,12 @@ if __name__ == "__main__":
     task_df = pd.read_csv(os.path.join(results_dir_path, "loadDelay_1_placementDelay_1.csv"))
     event_df = pd.read_csv(os.path.join(results_dir_path, 'events_by_time.csv'))
     batch_df = pd.read_csv(os.path.join(results_dir_path, 'batch_log.csv'))
-
     model_df = pd.read_csv(os.path.join(results_dir_path, "model_history_log.csv"))
+
+    for w in set(task_df["workflow_type"]):
+        for i in set(task_df[task_df["workflow_type"]==w]["task_id"]):
+            os.makedirs(os.path.join(out_path, f"pipeline{int(w+1)}", f"task{int(i)}"), exist_ok=True)
+
     plot_model_loading_histogram(model_df, out_path)
     plot_model_eviction_histogram(model_df, out_path)
 
