@@ -15,3 +15,9 @@ class Batch:
 
     def size(self) -> int:
         return len(self.tasks)
+    
+    def __str__(self):
+        return f"[BATCH {self.id} | TYPE {self.tasks[0].task_type}] <JOBS {self.job_ids}>"
+    
+    def __repr__(self):
+        return self.__str__()
