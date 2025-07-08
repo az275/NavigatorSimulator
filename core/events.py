@@ -21,49 +21,6 @@ class Event(object):
                                   "each class subclassing Event")
 
 
-class JobCreationAtExternalClient(Event):
-    """
-    Event signifying that a Job is created at External client
-    JobCreationAtExternalClient(s) Events 
-    1. generate one another in a chain reaction.
-    2. followup a JobArrival___ event for cloud to execute.
-    """
-    job_creation_counter = 0  # static variable
-
-    def __init__(self, simulation, external_client_id):
-        self.simulation = simulation
-        self.external_client_id = external_client_id
-        self.job_id = JobCreationAtExternalClient.job_creation_counter
-        JobCreationAtExternalClient.job_creation_counter += 1
-        
-    def run(self, current_time):
-        job, creation_delay = self.simulation.external_clients[self.external_client_id].create_job(
-             current_time, self.job_id)
-        self.simulation.jobs[job.id] = job  # tracking purpos
-        new_events = []
-        if self.job_creation_counter > 10 + TOTAL_NUM_OF_JOBS:
-            return new_events
-        # 1.  JobCreationAtExternalClient(s) generate one another in a chain reaction
-        new_events.append(EventOrders(current_time + creation_delay,
-                          JobCreationAtExternalClient(self.simulation, self.external_client_id)))
-        # 2. create a JobArrivalAtScheduler event
-        if(self.simulation.centralized_scheduler):
-            new_events.append(EventOrders(current_time + CPU_to_CPU_delay(job.tasks[0].input_size),
-                                          JobArrivalAtScheduler(self.simulation, job)))
-            # new_events.append(EventOrders(current_time + UplinkEdgeToCloud_delay(job.tasks[0].input_size),
-            #                               JobArrivalAtScheduler(self.simulation, job)))
-        else:
-            initial_worker_id = self.simulation.external_clients[self.external_client_id].select_initial_worker_id()
-            new_events.append(EventOrders(current_time + CPU_to_CPU_delay(job.tasks[0].input_size),
-                                          JobArrivalAtWorker(self.simulation, job, initial_worker_id)))
-            # new_events.append(EventOrders(current_time + UplinkEdgeToCloud_delay(job.tasks[0].input_size),
-            #                               JobArrivalAtWorker(self.simulation, job, initial_worker_id)))
-        return new_events
-
-    def to_string(self):
-        return "[Job Creation at Client (Job {})] ++".format(self.job_id)
-
-
 class JobArrivalAtScheduler(Event):
     """
     Event signifying that a Job arrived to a Centralized scheduler.

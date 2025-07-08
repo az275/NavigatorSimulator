@@ -41,7 +41,7 @@ def _get_affinity_sets(all_models: list[Model]) -> list[list[Model]]:
     
 
 def get_herd_assignment(task_types: list[tuple[int,int]], all_models: list[Model], 
-                        task_tputs: dict[tuple[int,int], float]) -> tuple[list[int], list[tuple[int,int]]]:
+                        task_tputs: dict[tuple[int,int], float], send_rate: float) -> tuple[list[int], list[tuple[int,int]]]:
     """
         Solves HERD ILP from p. 792 of SHEPHERD paper.
         Returns tuple[list[int], list[tuple[int,int]]] with the no. of GPUs
@@ -70,7 +70,6 @@ def get_herd_assignment(task_types: list[tuple[int,int]], all_models: list[Model
     mem = GPU_MEMORY_SIZE * G   # cluster total memory
 
     throughputs = [task_tputs[task_type] for task_type in task_types]
-    send_rate = 1 / DEFAULT_CREATION_INTERVAL_PERCLIENT * 1000
     n = [send_rate / throughputs[i] for i in range(I)]  # avg load rate / max goodput over GPUs
     m_size = [m.model_size for m in all_models]
 

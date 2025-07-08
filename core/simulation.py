@@ -44,7 +44,6 @@ class Simulation(object):
 
         self._batch_counter = 0
 
-        JobCreationAtExternalClient.job_creation_counter = 0
         self.jobs = {}
         
         # Tracking measurements
@@ -186,7 +185,7 @@ class Simulation(object):
             worker_configs = self.initialize_model_placement_at_workers()
             for i, config in enumerate(worker_configs):
                 if self.simulation_name == "shepherd":
-                    self.workers.append(ShepherdWorker(self, i, config[0]))
+                    self.workers.append(ShepherdWorker(self, i, config[0], 0))
                 else:
                     self.workers.append(HeftTaskWorker(self, i, config[0]))
                 for model in config[1]:
@@ -198,6 +197,42 @@ class Simulation(object):
         for job_type_id in self.job_types_list:
             self.external_clients.append(
                 ExternalClient(self, job_type=job_type_id))
+    
+    def send_rate_at(self, time: float) -> float:
+        if time == 0:
+            return SEND_RATES[0]
+        for i, change_time in enumerate(self.send_rate_change_times[::-1]):
+            if time >= change_time:
+                return SEND_RATES[-(i+1)]
+        return SEND_RATES[0]
+            
+    def generate_all_jobs(self):
+        self.send_rate_change_times = []
+
+        curr_send_rate_idx = 0
+        curr_send_rate = SEND_RATES[0]
+        curr_time = 0
+        for j in range(TOTAL_NUM_OF_JOBS):
+            if curr_send_rate_idx < len(SEND_RATES) - 1:
+                if j == sum(SEND_RATE_CHANGE_INTERVALS[:curr_send_rate_idx+1]):
+                    curr_send_rate_idx += 1
+                    curr_send_rate = SEND_RATES[curr_send_rate_idx]
+                    self.send_rate_change_times.append(curr_time)
+
+            curr_client_id = j % len(self.external_clients)
+            next_job = self.external_clients[curr_client_id].create_job(
+                curr_time, j, curr_send_rate)
+            self.jobs[next_job.id] = next_job
+            curr_time = next_job.create_time + CPU_to_CPU_delay(next_job.tasks[0].input_size)
+
+            if self.centralized_scheduler:
+                self.event_queue.put(EventOrders(
+                    curr_time, JobArrivalAtScheduler(self, next_job)))
+            else:
+                initial_worker_id = self.external_clients[curr_client_id].select_initial_worker_id()
+                self.event_queue.put(EventOrders(
+                    curr_time, JobArrivalAtWorker(self, next_job, initial_worker_id)))
+    
     """
      --------------    Printing out the simulation results     --------------
     """
@@ -252,9 +287,7 @@ class Simulation(object):
             slowdown = (completed_job.end_time - completed_job.create_time) / \
                 WORKFLOW_LIST[completed_job.job_type_id]["BEST_EXEC_TIME"]
             response_time = completed_job.end_time - completed_job.create_time
-            job_creation_interval = DEFAULT_CREATION_INTERVAL_PERCLIENT
-            if "JOB_CREATION_INTERVAL" in WORKFLOW_LIST[completed_job.job_type_id]:
-                job_creation_interval = WORKFLOW_LIST[completed_job.job_type_id]["JOB_CREATION_INTERVAL"]
+            job_creation_interval = self.send_rate_at(completed_job.create_time)
             dataframe.loc[index] = [index, LOAD_INFORMATION_STALENESS, PLACEMENT_INFORMATION_STALENESS, job_creation_interval, completed_job.job_type_id,
                                     completed_job.create_time, self.simulation_name, slowdown, response_time]
 

@@ -25,16 +25,6 @@ class Simulation_decentral(Simulation):
 
         self.initialize_workers()
 
-    def initialize_workers(self):
-        if self.job_split == "PER_TASK":
-            worker_configs = self.initialize_model_placement_at_workers()
-            for i, config in enumerate(worker_configs):
-                self.workers.append(TaskWorker(self, i, config[0]))
-                for model in config[1]:
-                    self.metadata_service.add_model_cached_location(model, i, 0)
-                    self.workers[-1].GPU_state.prefetch_model(model)
-            self.initialize_external_clients()
-
     def add_job_completion_time(self, job_id, task_id, completion_time):
         job_is_completed = self.jobs[job_id].job_completed(
             completion_time, task_id)
@@ -43,11 +33,8 @@ class Simulation_decentral(Simulation):
 
 
     def run(self):
-        client_initialize_interval = DEFAULT_CREATION_INTERVAL_PERCLIENT / len(self.external_clients)
-        for external_client_id in range(len(self.external_clients)):
-            self.event_queue.put(EventOrders(
-                external_client_id * client_initialize_interval, \
-                JobCreationAtExternalClient(self, external_client_id)))
+        self.generate_all_jobs()
+
         last_time = 0
         while self.remaining_jobs > 0:
             cur_event = self.event_queue.get()
@@ -58,7 +45,7 @@ class Simulation_decentral(Simulation):
             worker_id = -1
             if type(cur_event.event) == JobArrivalAtWorker:
                 worker_id = cur_event.event.worker_id
-            elif type(cur_event.event) != JobCreationAtExternalClient:
+            else:
                 worker_id = cur_event.event.worker.worker_id
 
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]

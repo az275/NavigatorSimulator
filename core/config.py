@@ -6,8 +6,9 @@ VALID_WORKER_SIZES = [24000000, 12000000, 6000000]
 """  --------       Workload Parameters    --------  """
 TOTAL_NUM_OF_JOBS = 10000
 
-# The interval between two consecutive job creation events at each external client 
-DEFAULT_CREATION_INTERVAL_PERCLIENT = 18.2     # ms.
+SEND_RATES = [55, 125]
+SEND_RATE_CHANGE_INTERVALS = [4000]
+SEND_RATE_CHANGE_CURVES = ["STEP"] # TODO: STEP | LINEAR | EXPONENTIAL
 
 WORKLOAD_DISTRIBUTION = "POISON"  # UNIFORM | POISON | GAMMA
 
