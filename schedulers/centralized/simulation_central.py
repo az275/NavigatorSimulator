@@ -36,7 +36,8 @@ class Simulation_central(Simulation):
             task_types = get_task_types(self.job_types_list)
             models_by_wf = list(self.metadata_service.job_type_models.values())
             all_models = [m for jt in self.job_types_list for m in models_by_wf[jt]]
-            task_tputs = {(0,0): 270, (0,1): 45, (0,2): 270, (0,3): 70}
+            task_tputs = {(0,0): 270, (0,1): 45, (0,2): 270, (0,3): 70,
+                          (1,0): 125, (1,1): 7555, (1,2): 92, (1,3): 4.82}
             (group_sizes, stream_groups) = get_herd_assignment(task_types, all_models, task_tputs)
             
             worker_groups = []
@@ -57,7 +58,7 @@ class Simulation_central(Simulation):
                 # randomly choose a model to prefetch
                 group_model_ids = self.state.group_models[worker.group_id]
                 preloaded_model_id = np.random.choice(list(group_model_ids))
-                preloaded_model = [m for m in models_by_wf[0] if m.model_id == preloaded_model_id][0]
+                preloaded_model = [m for ms in models_by_wf for m in ms if m.model_id == preloaded_model_id][0]
                 worker.GPU_state.prefetch_model(preloaded_model)
 
             self.initialize_external_clients()

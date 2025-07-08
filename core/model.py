@@ -19,9 +19,14 @@ class Model:
 
         self.exec_time_constants = {}
         for partition_size in batch_exec_times.keys():
-            m, b, r, p, std_err = stats.linregress(self.batch_sizes,
-                                                   self.batch_exec_times[partition_size])
-            self.exec_time_constants[partition_size] = (m, b)
+            if len(self.batch_sizes) == 1:
+                m, b, r, p, std_err = stats.linregress(self.batch_sizes + [2],
+                                                       self.batch_exec_times[partition_size])
+                self.exec_time_constants[partition_size] = (m, b)
+            else:
+                m, b, r, p, std_err = stats.linregress(self.batch_sizes,
+                                                       self.batch_exec_times[partition_size])
+                self.exec_time_constants[partition_size] = (m, b)
 
     def __hash__(self):
         return hash((self.job_type_id, self.model_id))

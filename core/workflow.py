@@ -151,8 +151,8 @@ WORKFLOW_LIST = [
                 "MAX_BATCH_SIZE": 1,
                 "MAX_WAIT_TIME": 1,          # ms
                 "BATCH_SIZES": [1],
-                "BATCH_EXEC_TIME": [87.3],
-                "MIG_BATCH_EXEC_TIMES": {24: [87.3], 12: [149.3]},
+                "BATCH_EXEC_TIME": [87.3, 164],
+                "MIG_BATCH_EXEC_TIMES": {24: [87.3, 164], 12: [149.3, 1350]},
                 "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05}
                ]
      }
