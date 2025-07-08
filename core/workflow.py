@@ -1,6 +1,7 @@
 """  --------       Workflow Parameters     --------  """
 # https://keras.io/api/applications/
 
+# TODO: mean instead of median; cv for pipeline 1
 WORKFLOW_LIST = [
     {"JOB_TYPE": 0,         # ID of the type of workflow (dependency graph)
      "JOB_NAME": "textvision",
@@ -102,7 +103,7 @@ WORKFLOW_LIST = [
                     24: [65.0, 68.0, 69.4, 72.1],
                     12: [65.0, 68.0, 69.4, 72.1] # TODO: update with real nums
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.182},
                {"MODEL_NAME": "encode_search-ivf",
                 "MODEL_ID": 5,
                 "TASK_INDEX": 1,
@@ -121,7 +122,7 @@ WORKFLOW_LIST = [
                     12: [16.7, 17.2, 17.5, 17.5],
                     6: [16.5, 16.9, 16.9, 17.3]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.414},
                {"MODEL_NAME": "text_check",
                 "MODEL_ID": 6,
                 "TASK_INDEX": 2,
@@ -138,7 +139,7 @@ WORKFLOW_LIST = [
                 "MIG_BATCH_EXEC_TIMES": {
                     24: [3.36, 3.72], 12: [4.04, 3.97], 6: [5.66, 9.51]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.65},
                {"MODEL_NAME": "aggregate-tts",
                 "MODEL_ID": 7,
                 "TASK_INDEX": 3,
@@ -153,7 +154,7 @@ WORKFLOW_LIST = [
                 "BATCH_SIZES": [1],
                 "BATCH_EXEC_TIME": [87.3, 164],
                 "MIG_BATCH_EXEC_TIMES": {24: [87.3, 164], 12: [149.3, 1350]},
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05}
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.338}
                ]
      }
 ]
