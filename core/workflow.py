@@ -164,3 +164,11 @@ def get_task_types(job_types: list[int]) -> list[tuple[int,int]]:
 
 def get_model_id_for_task_type(task_type: tuple[int,int]) -> int:
     return WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
+
+def get_task_types_for_model(model_id: int) -> list[tuple[int,int]]:
+    task_types = []
+    for wf in WORKFLOW_LIST:
+        for task in wf["TASKS"]:
+            if task["MODEL_ID"] == model_id:
+                task_types.append((wf["JOB_TYPE"], task["TASK_INDEX"]))
+    return task_types
