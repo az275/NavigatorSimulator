@@ -56,7 +56,11 @@ class Task(object):
         assert(batch_size <= self.max_batch_size)
         exact_exec_time = self.model.get_exec_time(batch_size, partition_size)
         stddev = self.exec_time_cv * exact_exec_time
+        
         randomized_time = np.random.normal(loc=exact_exec_time, scale=stddev, size=1)
+        while randomized_time <= 0:
+            randomized_time = np.random.normal(loc=exact_exec_time, scale=stddev, size=1)
+
         return randomized_time[0]
 
     def print_task_log(self):
