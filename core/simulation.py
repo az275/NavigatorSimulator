@@ -161,16 +161,16 @@ class Simulation(object):
         ]
 
         # static experiment alloc, ppl2:
-        # worker_configs = [
-        #     (12, [all_models[1][0]]),
-        #     (12, [all_models[1][1], all_models[1][2]]),
-        #     (12, [all_models[1][3]]),
-        #     (12, [all_models[1][3]]),
-        #     (12, [all_models[1][3]]),
-        #     (12, [all_models[1][3]]),
-        #     (12, [all_models[1][3]]),
-        #     (12, [all_models[1][3]])
-        # ]
+        worker_configs += [
+            (12, [all_models[1][0]]),
+            (12, [all_models[1][1], all_models[1][2]]),
+            (12, [all_models[1][3]]),
+            (12, [all_models[1][3]]),
+            (12, [all_models[1][3]]),
+            (12, [all_models[1][3]]),
+            (12, [all_models[1][3]]),
+            (12, [all_models[1][3]])
+        ]
 
         # static Gurobi alloc:
         # for (model_idxs, node, c), count in assignment.items():
@@ -198,40 +198,41 @@ class Simulation(object):
             self.external_clients.append(
                 ExternalClient(self, job_type=job_type_id))
     
-    def send_rate_at(self, time: float) -> float:
+    def send_rate_at(self, workflow: int, time: float) -> float:
         if time == 0:
-            return SEND_RATES[0]
+            return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][0]
         for i, change_time in enumerate(self.send_rate_change_times[::-1]):
             if time >= change_time:
-                return SEND_RATES[-(i+1)]
-        return SEND_RATES[0]
+                return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][-(i+1)]
+        return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][0]
             
     def generate_all_jobs(self):
         self.send_rate_change_times = []
 
-        curr_send_rate_idx = 0
-        curr_send_rate = SEND_RATES[0]
-        curr_time = 0
-        for j in range(TOTAL_NUM_OF_JOBS):
-            if curr_send_rate_idx < len(SEND_RATES) - 1:
-                if j == sum(SEND_RATE_CHANGE_INTERVALS[:curr_send_rate_idx+1]):
-                    curr_send_rate_idx += 1
-                    curr_send_rate = SEND_RATES[curr_send_rate_idx]
-                    self.send_rate_change_times.append(curr_time)
+        for idx, i in enumerate(self.job_types_list):
+            curr_send_rate_idx = 0
+            curr_send_rate = SEND_RATES_BY_WORKFLOW[i]["SEND_RATES"][0]
+            curr_time = 0
 
-            curr_client_id = j % len(self.external_clients)
-            next_job = self.external_clients[curr_client_id].create_job(
-                curr_time, j, curr_send_rate)
-            self.jobs[next_job.id] = next_job
-            curr_time = next_job.create_time + CPU_to_CPU_delay(next_job.tasks[0].input_size)
+            jid_offset = sum(TOTAL_NUM_OF_JOBS_PER_WORKFLOW[x] for x in self.job_types_list[:idx])
+            for j in range(TOTAL_NUM_OF_JOBS_PER_WORKFLOW[i]):
+                if curr_send_rate_idx < len(SEND_RATES_BY_WORKFLOW[i]["SEND_RATES"]) - 1:
+                    if j == sum(SEND_RATES_BY_WORKFLOW[i]["SEND_RATE_CHANGE_INTERVALS"][:curr_send_rate_idx+1]):
+                        curr_send_rate_idx += 1
+                        curr_send_rate = SEND_RATES_BY_WORKFLOW[i]["SEND_RATES"][curr_send_rate_idx]
+                        self.send_rate_change_times.append(curr_time)
 
-            if self.centralized_scheduler:
-                self.event_queue.put(EventOrders(
-                    curr_time, JobArrivalAtScheduler(self, next_job)))
-            else:
-                initial_worker_id = self.external_clients[curr_client_id].select_initial_worker_id()
-                self.event_queue.put(EventOrders(
-                    curr_time, JobArrivalAtWorker(self, next_job, initial_worker_id)))
+                next_job = self.external_clients[idx].create_job(curr_time, j + jid_offset, curr_send_rate)
+                self.jobs[next_job.id] = next_job
+                curr_time = next_job.create_time + CPU_to_CPU_delay(next_job.tasks[0].input_size)
+
+                if self.centralized_scheduler:
+                    self.event_queue.put(EventOrders(
+                        curr_time, JobArrivalAtScheduler(self, next_job)))
+                else:
+                    initial_worker_id = self.external_clients[idx].select_initial_worker_id()
+                    self.event_queue.put(EventOrders(
+                        curr_time, JobArrivalAtWorker(self, next_job, initial_worker_id)))
     
     """
      --------------    Printing out the simulation results     --------------
@@ -287,8 +288,8 @@ class Simulation(object):
             slowdown = (completed_job.end_time - completed_job.create_time) / \
                 WORKFLOW_LIST[completed_job.job_type_id]["BEST_EXEC_TIME"]
             response_time = completed_job.end_time - completed_job.create_time
-            job_creation_interval = self.send_rate_at(completed_job.create_time)
-            dataframe.loc[index] = [index, LOAD_INFORMATION_STALENESS, PLACEMENT_INFORMATION_STALENESS, job_creation_interval, completed_job.job_type_id,
+            job_creation_interval = self.send_rate_at(completed_job.job_type_id, completed_job.create_time)
+            dataframe.loc[index] = [completed_job.id, LOAD_INFORMATION_STALENESS, PLACEMENT_INFORMATION_STALENESS, job_creation_interval, completed_job.job_type_id,
                                     completed_job.create_time, self.simulation_name, slowdown, response_time]
 
         task_index = 0

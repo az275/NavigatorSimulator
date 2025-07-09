@@ -18,7 +18,7 @@ class Simulation_decentral(Simulation):
                             job_types_list=job_types_list,\
                             produce_breakdown=produce_breakdown)
 
-        self.remaining_jobs = TOTAL_NUM_OF_JOBS
+        self.remaining_jobs = sum(TOTAL_NUM_OF_JOBS_PER_WORKFLOW[i] for i in job_types_list)
         self.event_queue = PriorityQueue()
         
         self.consider_load, self.consider_cache = consider_load, consider_cache

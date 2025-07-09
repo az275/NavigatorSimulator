@@ -21,7 +21,7 @@ class Simulation_central(Simulation):
                             total_workers=num_workers,\
                             job_types_list=job_types_list,\
                             produce_breakdown=produce_breakdown)
-        self.remaining_jobs = TOTAL_NUM_OF_JOBS
+        self.remaining_jobs = sum(TOTAL_NUM_OF_JOBS_PER_WORKFLOW[i] for i in job_types_list)
         self.event_queue = PriorityQueue()
 
         self.model_queues = {}      # model id -> list[Task]
@@ -42,7 +42,8 @@ class Simulation_central(Simulation):
         task_tputs = {(0,0): 270, (0,1): 45, (0,2): 270, (0,3): 70,
                         (1,0): 125, (1,1): 7555, (1,2): 92, (1,3): 4.82}
         (group_sizes, stream_groups) = get_herd_assignment(
-            task_types, all_models, task_tputs, self.send_rate_at(current_time))
+            task_types, all_models, task_tputs, 
+            { wid: self.send_rate_at(wid, current_time) for wid in self.job_types_list})
         
         worker_groups = []
         worker_counter = 0
