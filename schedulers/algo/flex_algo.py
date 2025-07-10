@@ -48,7 +48,7 @@ def _flex_form_largest_batch(state: ShepherdState, model_queue: list[OrderedTask
     for ot in skipped_tasks:
         model_queue.put(ot)
     state.update_batch_counter()
-    return Batch(state._batch_counter-1, tasks)
+    return Batch(ShepherdState._batch_counter-1, tasks)
 
 
 def _flex_get_largest_candidate_batch(task_types: list[tuple[int,int]], 
@@ -103,6 +103,11 @@ def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int,
         best_worker = min(unassigned_workers,
                           key=lambda w: w.get_wait_time(current_time, largest_batch_model_id))
         
+        if not ENABLE_DYNAMIC_MODEL_LOADING:
+            if all(m.model_id != largest_batch_model_id for m in best_worker.GPU_state.placed_models(current_time)):
+                unassigned_workers.remove(best_worker)
+                continue
+        
         # when it is impossible for worker to load model for some reason
         if best_worker.get_wait_time(current_time, largest_batch_model_id) == np.inf:
             unassigned_workers.remove(best_worker)
@@ -146,10 +151,16 @@ def flex_schedule_on_batch_completion(simulation, state: ShepherdState, model_qu
         return []
     
     state.worker_completed_batch(worker.worker_id, completed_batch)
+
+    all_task_types = []
+    for m in worker.GPU_state.placed_models(current_time):
+        all_task_types += get_task_types_for_model(m.model_id)
     
     largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
-        state.group_task_types[state.task_type_to_group[completed_batch.tasks[0].task_type]], 
+        all_task_types if ENABLE_DYNAMIC_MODEL_LOADING else \
+            state.group_task_types[state.task_type_to_group[completed_batch.tasks[0].task_type]], 
         model_queues, current_time)
+
     if largest_batch_size > 0:
         batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
         state.assign_batch_to_worker(worker.worker_id, batch)
