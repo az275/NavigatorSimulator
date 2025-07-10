@@ -11,6 +11,8 @@ from workers.model_state import *
 class Worker(object):
     """ Abstract class representing workers. """
 
+    _abandoned_batches = []
+
     def __init__(self, simulation, worker_id, total_memory):
         assert(total_memory in [24, 12, 6])
 
@@ -23,8 +25,6 @@ class Worker(object):
 
         self.model_history_log = pd.DataFrame(columns=["start_time", "end_time",
                                                        "model_id", "placed_or_evicted"])
-        
-        self._abandoned_batches = []
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -63,11 +63,11 @@ class Worker(object):
                 evicted_batch = s.reserved_batch
                 break
         self.GPU_state.release_busy_model(batch_id, time)
-        self._abandoned_batches.append(batch_id)
+        Worker._abandoned_batches.append(batch_id)
         return evicted_batch
 
     def did_abandon_batch(self, batch_id: int):
-        return batch_id in self._abandoned_batches
+        return batch_id in Worker._abandoned_batches
     
     """ ----------  LOCAL MEMORY MANAGEMENT  ---------- """
     

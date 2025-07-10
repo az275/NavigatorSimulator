@@ -272,6 +272,84 @@ class JobEndEvent(Event):
     def to_string(self):
         return "[Job End] ==="
 
+
+from workers.worker import Worker
+
+class AbortAllJobsEvent(Event):
+    """
+        Event signifying that all workers should immediately abort all
+        currently executing batches and send them back to the Centralized
+        scheduler for rescheduling.
+    """
+
+    def __init__(self, simulation, run_herd_sched=False):
+        self.simulation = simulation
+        self.run_herd_sched = run_herd_sched
+
+    def run(self, current_time):
+        events = []
+        for worker in self.simulation.workers:
+            curr_batch_ids = [s.reserved_batch.id for s in worker.GPU_state.state_at(current_time) if s.reserved_batch]
+            for batch_id in curr_batch_ids:
+                evicted_batch = worker.evict_batch(batch_id, current_time)
+                events.append(EventOrders(
+                    current_time + CPU_to_CPU_delay(evicted_batch.tasks[0].input_size * evicted_batch.size()), 
+                    TasksArrivalAtScheduler(self.simulation, evicted_batch.tasks)))
+            
+            assigned_batch = self.simulation.state.worker_states[worker.worker_id]
+            if assigned_batch and not worker.did_abandon_batch(assigned_batch.id):
+                Worker._abandoned_batches.append(assigned_batch.id)
+
+        assert(all(all(not s.reserved_batch for s in w.GPU_state.state_at(current_time)) 
+                    for w in self.simulation.workers))
+        
+        if self.run_herd_sched:
+            events.append(EventOrders(current_time, RerunHerdScheduler(self.simulation)))
+
+        return events
+
+    def to_string(self):
+        return "[Abort All Jobs]"
+
+
+class StartHerdSchedulerRerun(Event):
+    """
+        Event signifying that the HERD scheduler should be run again to reallocate GPUs.
+        Triggers job abortion and scheduler rerun.
+    """
+
+    def __init__(self, simulation):
+        self.simulation = simulation
+
+    def run(self, current_time):
+        if self.simulation.remaining_jobs:
+            return [EventOrders(current_time, 
+                                AbortAllJobsEvent(self.simulation, run_herd_sched=True))]
+        return []
+
+    def to_string(self):
+        return "[HERD Scheduler Rerun Queued]"
+
+
+class RerunHerdScheduler(Event):
+    """
+        Event signifying that the HERD scheduler will be run again to
+        reallocate GPUs.
+    """
+
+    def __init__(self, simulation):
+        self.simulation = simulation
+
+    def run(self, current_time):
+        self.simulation.run_herd_scheduler(current_time)
+        events = self.simulation.schedule_tasks_on_queue(current_time)
+        return events + [EventOrders(current_time + HERD_PERIODICITY,
+                                     StartHerdSchedulerRerun(self.simulation))]
+
+    def to_string(self):
+        return "[HERD Scheduler Rerun]"
+
+
 class EventOrders:
     """
     Used so that the Simulation keeps track of the priority queue order

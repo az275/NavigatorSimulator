@@ -14,8 +14,8 @@ import pandas as pd
 from workers.heft_task_worker import *
 from workers.shepherd_task_worker import *
 
-# import gurobipy as gp
-# from gurobipy import GRB
+import gurobipy as gp
+from gurobipy import GRB
 
 
 class Simulation(object):
@@ -56,129 +56,122 @@ class Simulation(object):
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
 
+    def get_model_from_id(self, model_id: int) -> Model:
+        all_models = [m for ms in list(self.metadata_service.job_type_models.values()) for m in ms]
+        return list(filter(lambda m: m.model_id == model_id, all_models))[0]
+
     def initialize_model_placement_at_workers(self):
         """Initial object placement to home node"""
+
         all_models = list(self.metadata_service.job_type_models.values())
+
+        if ALLOCATION_STRATEGY == "VORTEX":
+            # TODO: generalize ILP
+            models = ["0,2", "1", "3"] # index in all_models[0]
+            configs = [6, 12, 24]
+            nodes = [i for i in range(TOTAL_NUM_OF_NODES)]
+
+            # ppl1
+            throughput = {
+                "0,2": {6: 200, 12: 240, 24: 270},
+                "1": {24: 45},
+                "3": {6: 55, 12: 55, 24: 70},
+            }
+
+            # ppl2
+            throughput = {
+                '0': {12:71, 24: 125},
+                '1': {6: 5333, 12: 6083 ,24: 7555},
+                '2': {6: 26, 12: 45, 24: 92},
+                '3': {12: 3.9, 24: 4.82}
+            }
+
+            valid_layouts = [[24], [12, 12], [12, 6, 6], [6, 6, 6, 6]]
+
+            def solve_leximin(locked_lower_bounds):
+                m = gp.Model("Leximin_Level")
+                x, y = {}, {}
+                T_m = {}
+                Z = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name="Z")
+
+                for model in models:
+                    for node in nodes:
+                        for c in configs:
+                            if c in throughput[model]:
+                                x[model, node, c] = m.addVar(vtype=GRB.INTEGER, name=f"x_{model}_{node}_{c}")
+
+                for node in nodes:
+                    for lid, layout in enumerate(valid_layouts):
+                        y[node, lid] = m.addVar(vtype=GRB.BINARY, name=f"y_{node}_{lid}")
+
+                for model in models:
+                    T_m[model] = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"T_{model}")
+                    m.addConstr(
+                        T_m[model] == gp.quicksum(
+                            x[model, node, c] * throughput[model][c]
+                            for node in nodes for c in configs if (model, node, c) in x
+                        )
+                    )
+
+                    if model in locked_lower_bounds:
+                        m.addConstr(T_m[model] >= locked_lower_bounds[model])
+                    else:
+                        m.addConstr(Z <= T_m[model])
+
+                    m.addConstr(gp.quicksum(
+                        x[model, node, c] for node in nodes for c in configs if (model, node, c) in x
+                    ) >= 1)
+
+                for node in nodes:
+                    m.addConstr(gp.quicksum(y[node, lid] for lid in range(len(valid_layouts))) == 1)
+                    for c in configs:
+                        m.addConstr(
+                            gp.quicksum(
+                                x[model, node, c] for model in models if (model, node, c) in x
+                            ) <= gp.quicksum(
+                                y[node, lid] * layout.count(c)
+                                for lid, layout in enumerate(valid_layouts)
+                            )
+                        )
+
+                m.setObjective(Z, GRB.MAXIMIZE)
+                m.setParam("OutputFlag", 0)
+                m.optimize()
+
+                throughput_vals = {model: T_m[model].X for model in models}
+                assignment = {
+                    (model, node, c): int(x[model, node, c].X)
+                    for model in models for node in nodes for c in configs
+                    if (model, node, c) in x and x[model, node, c].X > 0.5
+                }
+                return throughput_vals, assignment
+
+            # Leximin loop
+            locked = {}
+            for _ in range(len(models)):
+                T_vals, assignment = solve_leximin(locked)
+                unlocked = [m for m in models if m not in locked]
+                if not unlocked:
+                    break
+                min_model = min(unlocked, key=lambda m: T_vals[m])
+                locked[min_model] = T_vals[min_model]
+
+            # static Gurobi alloc:
+            worker_configs = []
+            for (model_idxs, node, c), count in assignment.items():
+                models = list(map(lambda idx: all_models[0][int(idx)], model_idxs.split(",")))
+                for _ in range(count):
+                    worker_configs.append((c, models))
+                print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
+            return worker_configs
+        elif ALLOCATION_STRATEGY == "CUSTOM":
+            assert(sum(psize for psize, _ in CUSTOM_ALLOCATION) / 24 == TOTAL_NUM_OF_NODES)
+            assert(all((psize*(10**6)) in VALID_WORKER_SIZES for psize, _ in CUSTOM_ALLOCATION))
+            worker_configs = [(psize, [self.get_model_from_id(mid) for mid in mids])
+                              for psize, mids in CUSTOM_ALLOCATION]
+            return worker_configs
         
-        models = ["0,2", "1", "3"] # index in all_models[0]
-        configs = [6, 12, 24]
-        nodes = [i for i in range(TOTAL_NUM_OF_NODES)]
-
-        # ppl1
-        throughput = {
-            "0,2": {6: 200, 12: 240, 24: 270},
-            "1": {24: 45},
-            "3": {6: 55, 12: 55, 24: 70},
-        }
-
-        # ppl2
-        throughput = {
-            '0': {12:71, 24: 125},
-            '1': {6: 5333, 12: 6083 ,24: 7555},
-            '2': {6: 26, 12: 45, 24: 92},
-            '3': {12: 3.9, 24: 4.82}
-        }
-
-        valid_layouts = [[24], [12, 12], [12, 6, 6], [6, 6, 6, 6]]
-
-        # def solve_leximin(locked_lower_bounds):
-        #     m = gp.Model("Leximin_Level")
-        #     x, y = {}, {}
-        #     T_m = {}
-        #     Z = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name="Z")
-
-        #     for model in models:
-        #         for node in nodes:
-        #             for c in configs:
-        #                 if c in throughput[model]:
-        #                     x[model, node, c] = m.addVar(vtype=GRB.INTEGER, name=f"x_{model}_{node}_{c}")
-
-        #     for node in nodes:
-        #         for lid, layout in enumerate(valid_layouts):
-        #             y[node, lid] = m.addVar(vtype=GRB.BINARY, name=f"y_{node}_{lid}")
-
-        #     for model in models:
-        #         T_m[model] = m.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"T_{model}")
-        #         m.addConstr(
-        #             T_m[model] == gp.quicksum(
-        #                 x[model, node, c] * throughput[model][c]
-        #                 for node in nodes for c in configs if (model, node, c) in x
-        #             )
-        #         )
-
-        #         if model in locked_lower_bounds:
-        #             m.addConstr(T_m[model] >= locked_lower_bounds[model])
-        #         else:
-        #             m.addConstr(Z <= T_m[model])
-
-        #         m.addConstr(gp.quicksum(
-        #             x[model, node, c] for node in nodes for c in configs if (model, node, c) in x
-        #         ) >= 1)
-
-        #     for node in nodes:
-        #         m.addConstr(gp.quicksum(y[node, lid] for lid in range(len(valid_layouts))) == 1)
-        #         for c in configs:
-        #             m.addConstr(
-        #                 gp.quicksum(
-        #                     x[model, node, c] for model in models if (model, node, c) in x
-        #                 ) <= gp.quicksum(
-        #                     y[node, lid] * layout.count(c)
-        #                     for lid, layout in enumerate(valid_layouts)
-        #                 )
-        #             )
-
-        #     m.setObjective(Z, GRB.MAXIMIZE)
-        #     m.setParam("OutputFlag", 0)
-        #     m.optimize()
-
-        #     throughput_vals = {model: T_m[model].X for model in models}
-        #     assignment = {
-        #         (model, node, c): int(x[model, node, c].X)
-        #         for model in models for node in nodes for c in configs
-        #         if (model, node, c) in x and x[model, node, c].X > 0.5
-        #     }
-        #     return throughput_vals, assignment
-
-        # # Leximin loop
-        # locked = {}
-        # for _ in range(len(models)):
-        #     T_vals, assignment = solve_leximin(locked)
-        #     unlocked = [m for m in models if m not in locked]
-        #     if not unlocked:
-        #         break
-        #     min_model = min(unlocked, key=lambda m: T_vals[m])
-        #     locked[min_model] = T_vals[min_model]
-
-        # static experiment alloc, ppl1:
-        worker_configs = [
-            (24, [all_models[0][1]]),
-            (24, [all_models[0][1]]),
-            (24, [all_models[0][1]]),
-            (6, [all_models[0][3]]),
-            (6, [all_models[0][3]]),
-            (6, [all_models[0][3]]),
-            (6, [all_models[0][0], all_models[0][2]])
-        ]
-
-        # static experiment alloc, ppl2:
-        worker_configs += [
-            (12, [all_models[1][0]]),
-            (12, [all_models[1][1], all_models[1][2]]),
-            (12, [all_models[1][3]]),
-            (12, [all_models[1][3]]),
-            (12, [all_models[1][3]]),
-            (12, [all_models[1][3]]),
-            (12, [all_models[1][3]]),
-            (12, [all_models[1][3]])
-        ]
-
-        # static Gurobi alloc:
-        # for (model_idxs, node, c), count in assignment.items():
-        #     models = list(map(lambda idx: all_models[0][int(idx)], model_idxs.split(",")))
-        #     for _ in range(count):
-        #         worker_configs.append((c, models))
-        #     print(f" - Model {model_idxs} assigned {count}x to {node} with MIG {c}GB")
-        return worker_configs
+        assert(False)
     
     def initialize_workers(self):
         if self.job_split == "PER_TASK":
@@ -201,13 +194,13 @@ class Simulation(object):
     def send_rate_at(self, workflow: int, time: float) -> float:
         if time == 0:
             return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][0]
-        for i, change_time in enumerate(self.send_rate_change_times[::-1]):
+        for i, change_time in enumerate(self.send_rate_change_times[workflow][::-1]):
             if time >= change_time:
                 return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][-(i+1)]
         return SEND_RATES_BY_WORKFLOW[workflow]["SEND_RATES"][0]
             
     def generate_all_jobs(self):
-        self.send_rate_change_times = []
+        self.send_rate_change_times = { jt: [] for jt in self.job_types_list }
 
         for idx, i in enumerate(self.job_types_list):
             curr_send_rate_idx = 0
@@ -220,7 +213,7 @@ class Simulation(object):
                     if j == sum(SEND_RATES_BY_WORKFLOW[i]["SEND_RATE_CHANGE_INTERVALS"][:curr_send_rate_idx+1]):
                         curr_send_rate_idx += 1
                         curr_send_rate = SEND_RATES_BY_WORKFLOW[i]["SEND_RATES"][curr_send_rate_idx]
-                        self.send_rate_change_times.append(curr_time)
+                        self.send_rate_change_times[i].append(curr_time)
 
                 next_job = self.external_clients[idx].create_job(curr_time, j + jid_offset, curr_send_rate)
                 self.jobs[next_job.id] = next_job

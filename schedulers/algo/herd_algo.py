@@ -69,8 +69,7 @@ def get_herd_assignment(task_types: list[tuple[int,int]], all_models: list[Model
     G = 4                       # max GPUs per group, 12 in paper
     mem = GPU_MEMORY_SIZE * G   # cluster total memory
 
-    throughputs = [task_tputs[task_type] for task_type in task_types]
-    n = [send_rates[wid] / throughputs[i] for wid,tid in task_types]  # avg load rate / max goodput over GPUs
+    n = [send_rates[wid] / task_tputs[(wid,tid)] for wid,tid in task_types]  # avg load rate / max goodput over GPUs
     m_size = [m.model_size for m in all_models]
 
     # h[i][k] == 1 iff stream i uses model k

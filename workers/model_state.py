@@ -247,8 +247,8 @@ class GPUState(object):
         return [state for state in states if state.state == ModelState.PLACED]
     
     def does_have_idle_copy(self, model: Model, time: float) -> bool:
-        return any(state.model.model_id == model.model_id and not state.reserved_batch
-                   for state in self.placed_model_states(time))
+        return any(state.model.model_id == model.model_id and not state.reserved_batch and state.state in [ModelState.IN_FETCH, ModelState.PLACED]
+                   for state in self.state_at(time))
     
     def reserve_idle_copy(self, model: Model, time: float, reserved_batch: Batch, reserve_until: float):
         """
@@ -256,8 +256,7 @@ class GPUState(object):
             starting from [time]. When execution finishes, a call to
             [release_busy_copy] is required.
         """
-        assert(self.does_have_idle_copy(model, time) or 
-               any(s.model==model and s.state==ModelState.IN_FETCH for s in self.state_at(time)))
+        assert(self.does_have_idle_copy(model, time))
         assert(reserve_until > time)
 
         def _occupy_one_copy(timestamp, states):

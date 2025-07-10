@@ -5,6 +5,8 @@ from schedulers.algo.herd_algo import *
 
 class ShepherdState:
 
+    _batch_counter = 0
+
     def __init__(self, worker_groups: list[list], task_type_to_group: dict[tuple[int,int],int]):
         self.worker_groups = worker_groups
         self.task_type_to_group = task_type_to_group
@@ -19,10 +21,8 @@ class ShepherdState:
             for worker in group:
                 self.worker_states[worker.worker_id] = None
 
-        self._batch_counter = 0
-
     def update_batch_counter(self):
-        self._batch_counter += 1
+        ShepherdState._batch_counter += 1
     
     def worker_completed_batch(self, worker_id: int, batch: Batch):
         assert(self.worker_states[worker_id] == batch)
