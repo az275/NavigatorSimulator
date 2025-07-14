@@ -136,6 +136,9 @@ class BatchPreemptionAtWorker(Event):
                 task.log.set_task_placed_on_worker_queue_timestamp(current_time)
             return self.worker.preempt_batch(self.old_batch_id, self.batch, current_time)
         else:
+            # NOTE: marks as abandoned anyway in case prior assigned batch
+            # has not yet arrived
+            Worker._abandoned_batches.append(self.old_batch_id)
             # if outdated decision, send back tasks for rescheduling
             current_batches = [s.reserved_batch for s in self.worker.GPU_state.state_at(current_time) if s.reserved_batch]
             return [EventOrders(
