@@ -13,8 +13,7 @@ class ExternalClient(object):
     def create_job(self, current_time, current_job_id, send_rate):
         job_create_delay = 1 / send_rate * 1000
         if WORKLOAD_DISTRIBUTION == "POISON":
-            job_create_delay = np.random.exponential(
-                1 / send_rate * 1000)
+            job_create_delay = np.random.poisson(lam=(1 / send_rate * 1000))
         if WORKLOAD_DISTRIBUTION == "GAMMA":
             shape = (1 / send_rate * 1000)**2 / GAMMA_CV**2
             scale = GAMMA_CV**2 / (1 / send_rate * 1000)
