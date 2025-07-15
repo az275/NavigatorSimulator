@@ -37,11 +37,8 @@ class Simulation_central(Simulation):
             jobs_since_last_sched = [j for j in self.jobs.values() if j.job_type_id == jt and \
                                         j.tasks[0].log.task_arrival_at_scheduler_timestamp > (current_time - HERD_PERIODICITY) and \
                                         j.tasks[0].log.task_arrival_at_scheduler_timestamp <= current_time]
-            curr_send_rates[jt] = max(len(jobs_since_last_sched) / HERD_PERIODICITY * 1000,
-                                      5) # TODO: minimum send rate?
-        
-        print(f"SEND RATE: {curr_send_rates}")
-        
+            curr_send_rates[jt] = len(jobs_since_last_sched) / HERD_PERIODICITY * 1000 + 5 
+            # TODO: minimum send rate? 
         self.workers = []
 
         task_types = get_task_types(self.job_types_list)
@@ -73,6 +70,7 @@ class Simulation_central(Simulation):
                 if group_model_ids:
                     preloaded_model_id = np.random.choice(list(group_model_ids))
                     preloaded_model = [m for ms in models_by_wf for m in ms if m.model_id == preloaded_model_id][0]
+                    print(f"W{worker.worker_id} PRELOADED {preloaded_model_id}")
                     worker.GPU_state.prefetch_model(preloaded_model)
 
 
@@ -154,8 +152,6 @@ class Simulation_central(Simulation):
             elif type(cur_event.event) not in [JobArrivalAtScheduler, TasksArrivalAtScheduler, StartHerdSchedulerRerun, RerunHerdScheduler, AbortAllJobsEvent]:
                 worker_id = cur_event.event.worker.worker_id
 
-            assert type(cur_event.event) != TaskArrival
-
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]
 
             assert cur_event.current_time >= last_time
@@ -195,17 +191,21 @@ class Simulation_central(Simulation):
         activation_graph = {}  # {task_id0->worker_id0, ...}
         for task in job.tasks:
             allocated_worker_id = np.random.choice(
-                range(self.total_workers), replace=True)
+                [w.worker_id for w in self.workers 
+                 if task.model == None or any(m.model_id==task.model.model_id 
+                                              for m in w.GPU_state.placed_models(current_time))], 
+                replace=True)
             activation_graph[task.task_id] = allocated_worker_id
         job.assign_ADFG(activation_graph)
 
         # 2. send the first task to allocated worker
-        initial_task = job.tasks[0]
-        task_arrival_time = current_time + \
-            CPU_to_CPU_delay(initial_task.input_size)
-        worker_index = activation_graph[initial_task.task_id]
-        task_arrival_events.append(EventOrders(
-            task_arrival_time, TaskArrival(self.workers[worker_index], initial_task, job.id)))
+        initial_tasks = [task for task in job.tasks if len(task.required_task_ids) == 0]
+        for initial_task in initial_tasks:
+            task_arrival_time = current_time + \
+                CPU_to_CPU_delay(initial_task.input_size)
+            worker_index = activation_graph[initial_task.task_id]
+            task_arrival_events.append(EventOrders(
+                task_arrival_time, TaskArrival(self.workers[worker_index], initial_task, job.id)))
         return task_arrival_events
 
     def affinity_schedule_job_and_send_tasks(self, job, current_time):
