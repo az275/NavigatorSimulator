@@ -104,6 +104,8 @@ class BatchRejectionAtWorker(Event):
     def run(self, current_time):
         # assert self.simulation.state.worker_states[self.worker.worker_id].id == self.batch.id
         self.simulation.state.worker_rejected_batch(self.worker.worker_id, self.batch, self.current_worker_batch)
+        if self.batch.size() == 0:
+            return [] # possible if all tasks were dropped
         return [EventOrders(current_time, TasksArrivalAtScheduler(self.simulation, self.batch.tasks))] # reschedule batch
 
     def should_abandon_event(self, current_time, kwargs: dict):
