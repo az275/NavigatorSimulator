@@ -45,7 +45,7 @@ class Simulation_decentral(Simulation):
             worker_id = -1
             if type(cur_event.event) == JobArrivalAtWorker:
                 worker_id = cur_event.event.worker_id
-            else:
+            elif type(cur_event.event) not in [StartHerdSchedulerRerun, RerunHerdScheduler, AbortAllJobsEvent]:
                 worker_id = cur_event.event.worker.worker_id
 
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]

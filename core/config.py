@@ -1,13 +1,13 @@
 """ --------      Worker Machines Parameters      -------- """
 GPU_MEMORY_SIZE = 24000000  # in KB, 24GB for NVIDIA A30
-TOTAL_NUM_OF_NODES = 8
+TOTAL_NUM_OF_NODES = 4
 VALID_WORKER_SIZES = [24000000, 12000000, 6000000]
 
 """  --------       Workload Parameters    --------  """
-TOTAL_NUM_OF_JOBS_PER_WORKFLOW = {}
+TOTAL_NUM_OF_JOBS_PER_WORKFLOW = {0: 10000}
 
 # TODO: STEP | LINEAR | EXPONENTIAL
-SEND_RATES_BY_WORKFLOW = {}
+SEND_RATES_BY_WORKFLOW = {"SEND_RATES": [95], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []},
 
 WORKLOAD_DISTRIBUTION = "POISON"  # UNIFORM | POISON | GAMMA
 
@@ -25,30 +25,19 @@ RESCHEDULE_THREASHOLD = 1.5
 FLEX_LAMBDA = 3.03
 HERD_K = 1.3
 import numpy as np
-HERD_PERIODICITY = 10000   # runs HERD every [HERD_PERIODICITY] ms
+HERD_PERIODICITY = np.inf
+# TODO: decentralized scheduling w job abortion & realloc
 
 """  -------        General Scheduling Parameters  --------- """
-ENABLE_DYNAMIC_MODEL_LOADING = False
+ENABLE_MULTITHREADING = False # allow multiple models on same partition to run at once
+ENABLE_MODEL_PREFETCH = False
+ENABLE_DYNAMIC_MODEL_LOADING = True
 
 # HERD | VORTEX | CUSTOM
 # NOTE: HERD requires ENABLE_DYNAMIC_MODEL_LOADING
-ALLOCATION_STRATEGY = "CUSTOM"
+ALLOCATION_STRATEGY = 'HERD'
 
-"""
-    If ALLOCATION_STRATEGY == "CUSTOM", must define CUSTOM_ALLOCATION : list[tuple[int, list[int]]]
-    where each (int, list[int]) is the (partition_size, list[model ids that can be loaded to partition])
-    of a worker.
-
-    Currently: If dynamic, may load from outside list
-
-    TODO:
-
-    If ENABLE_DYNAMIC_LOADING, then models will be greedily preloaded onto each worker until space
-    runs out, and when a task is scheduled, the worker may evict/load new models from the list.
-
-    Otherwise, workers will attempt to preload all models in the list for a static allocation.
-"""
-CUSTOM_ALLOCATION = []
+CUSTOM_ALLOCATION = [(24, [1]), (24, [1]), (24, [1]), (6, [3]), (6, [3]), (6, [3]), (6, [0, 2])]
 
 # static experiment alloc, ppl1:
 # [(24, [1]), (24, [1]), (24, [1]), (6, [3]), (6, [3]), (6, [3]), (6, [0, 2])]

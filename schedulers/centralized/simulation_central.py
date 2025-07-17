@@ -31,63 +31,6 @@ class Simulation_central(Simulation):
 
         self.initialize_workers()
 
-    def run_herd_scheduler(self, current_time: float):
-        curr_send_rates = {}
-        for jt in self.job_types_list:
-            jobs_since_last_sched = [j for j in self.jobs.values() if j.job_type_id == jt and \
-                                        j.tasks[0].log.task_arrival_at_scheduler_timestamp > (current_time - HERD_PERIODICITY) and \
-                                        j.tasks[0].log.task_arrival_at_scheduler_timestamp <= current_time]
-            curr_send_rates[jt] = len(jobs_since_last_sched) / HERD_PERIODICITY * 1000 + 5 
-            # TODO: minimum send rate? 
-        self.workers = []
-
-        task_types = get_task_types(self.job_types_list)
-        models_by_wf = list(self.metadata_service.job_type_models.values())
-        all_models = [m for jt in self.job_types_list for m in models_by_wf[jt]]
-        task_tputs = {(0,0): 270, (0,1): 45, (0,2): 270, (0,3): 70,
-                        (1,0): 125, (1,1): 7555, (1,2): 92, (1,3): 4.82}
-        (group_sizes, stream_groups) = get_herd_assignment(
-            task_types, all_models, task_tputs, curr_send_rates)
-        
-        worker_groups = []
-        worker_counter = 0
-        for i, group_size in enumerate(group_sizes):
-            group_workers = [ShepherdWorker(self, worker_counter+j, 24, i) for j in range(int(group_size))]
-            worker_counter += len(group_workers)
-            self.workers += group_workers
-            worker_groups.append(group_workers)
-
-        task_type_assignments = {}
-        for (sid, group_id) in stream_groups:
-            task_type_assignments[task_types[sid]] = group_id
-
-        self.state = ShepherdState(worker_groups, task_type_assignments)
-
-        if current_time == 0:
-            for worker in self.workers:
-                # randomly choose a model to prefetch
-                group_model_ids = self.state.group_models[worker.group_id]
-                if group_model_ids:
-                    preloaded_model_id = np.random.choice(list(group_model_ids))
-                    preloaded_model = [m for ms in models_by_wf for m in ms if m.model_id == preloaded_model_id][0]
-                    print(f"W{worker.worker_id} PRELOADED {preloaded_model_id}")
-                    worker.GPU_state.prefetch_model(preloaded_model)
-
-
-    def initialize_workers(self):
-        if ALLOCATION_STRATEGY == "HERD":
-            self.run_herd_scheduler(0)
-            self.initialize_external_clients()
-
-            self.event_queue.put(EventOrders(
-                HERD_PERIODICITY, StartHerdSchedulerRerun(self)))
-        else:
-            super().initialize_workers()
-            if self.simulation_name == "shepherd":
-                self.state = ShepherdState(
-                    [self.workers],
-                    { tt: 0 for tt in get_task_types(self.job_types_list) })
-
     def schedule_job_and_send_tasks(self, job, current_time):
         if(self.simulation_name == "centralheft"):
             return self.nav_heft_schedule_job_and_send_tasks(job,  current_time)

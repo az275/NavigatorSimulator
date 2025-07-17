@@ -129,10 +129,8 @@ class BatchArrivalAtWorker(Event):
     def run(self, current_time):
         self.batch.tasks = [task for task in self.batch.tasks 
                             if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
-
-        # NOTE: Sends back tasks if busy (shepherd) or doesn't have model (static heft)  
-        if (self.simulation.simulation_name != "shepherd" and not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time)) or \
-            (self.simulation.simulation_name == "shepherd" and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))) or \
+        if (not ENABLE_DYNAMIC_MODEL_LOADING and not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time)) or \
+            (not ENABLE_MULTITHREADING and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))) or \
                 self.worker.did_abandon_batch(self.batch.id):
             current_batches = [s.reserved_batch for s in self.worker.GPU_state.state_at(current_time) if s.reserved_batch]
             return [EventOrders(current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size), 
@@ -360,9 +358,18 @@ class AbortAllJobsEvent(Event):
             curr_batch_ids = [s.reserved_batch.id for s in worker.GPU_state.state_at(current_time) if s.reserved_batch]
             for batch_id in curr_batch_ids:
                 evicted_batch = worker.evict_batch(batch_id, current_time)
-                events.append(EventOrders(
-                    current_time + CPU_to_CPU_delay(evicted_batch.tasks[0].input_size * evicted_batch.size()), 
-                    TasksArrivalAtScheduler(self.simulation, evicted_batch.tasks)))
+                if self.simulation.centralized_scheduler:
+                    events.append(EventOrders(
+                        current_time + CPU_to_CPU_delay(evicted_batch.tasks[0].input_size * evicted_batch.size()), 
+                        TasksArrivalAtScheduler(self.simulation, evicted_batch.tasks)))
+                else:
+                    # TODO: decentral + HERD case
+                    pass
+                    # events.append(EventOrders(
+                    #     current_time + CPU_to_CPU_delay(evicted_batch.tasks[0].input_size * evicted_batch.size()), 
+                        
+                        
+                    #     TasksArrivalAtScheduler(self.simulation, evicted_batch.tasks)))
             
             assigned_batch = self.simulation.state.worker_states[worker.worker_id]
             if assigned_batch and not worker.did_abandon_batch(assigned_batch.id):
@@ -416,7 +423,10 @@ class RerunHerdScheduler(Event):
 
     def run(self, current_time):
         self.simulation.run_herd_scheduler(current_time)
-        events = self.simulation.schedule_tasks_on_queue(current_time)
+        events = []
+        if self.simulation.centralized_scheduler:
+            events = self.simulation.schedule_tasks_on_queue(current_time)
+
         if HERD_PERIODICITY == np.inf:
             return events
         return events + [EventOrders(current_time + HERD_PERIODICITY,

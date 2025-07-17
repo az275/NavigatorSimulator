@@ -21,7 +21,7 @@ class HeftTaskWorker(TaskWorker):
         """
         Add task into the local task queue
         """
-        if task.model != None and task.model not in self.GPU_state.placed_models(current_time):
+        if not ENABLE_DYNAMIC_MODEL_LOADING and task.model != None and task.model not in self.GPU_state.placed_models(current_time):
             print("Static allocation received task that cannot be executed")
             print(f"Allocated: {self.GPU_state.state_at(current_time)}, Requested ID: {task.model.model_id}")
             assert(False)
@@ -234,13 +234,37 @@ class HeftTaskWorker(TaskWorker):
             info_staleness = 0
 
         task_model_id = WORKFLOW_LIST[task_type[0]]["TASKS"][task_type[1]]["MODEL_ID"]
-        if task_model_id < 0:
+        if task_model_id < 0: # CPU only
             return 0
         
         task_model_states = list(filter(lambda s: s.model.model_id == task_model_id, 
-                                        self.GPU_state.placed_model_states(current_time)))
-        if len(task_model_states) == 0:
-            return np.inf
+                                        self.GPU_state.placed_model_states(current_time)))    
+        if len(task_model_states) == 0: # model not currently on worker
+            if not ENABLE_DYNAMIC_MODEL_LOADING: # static alloc
+                return np.inf
+            else:
+                task_model = self.simulation.get_model_from_id(task_model_id)
+                fetch_time = SameMachineCPUtoGPU_delay(task_model.model_size)
+                if self.GPU_state.can_fetch_model_on_eviction(task_model, current_time):
+                    # evictions are free
+                    return fetch_time
+                else: # not enough space to load right away
+                    latest_avail = 0
+                    placed_model_states = [s for s in self.GPU_state.state_at(current_time) 
+                                           if s.state in [ModelState.IN_FETCH, ModelState.PLACED]]
+                    total_avail_mem = self.GPU_state.available_memory(current_time)
+                    i = 0
+                    while total_avail_mem < task_model.model_size:
+                        total_avail_mem += placed_model_states[i].model.model_size
+                        avail_at = 0
+                        if placed_model_states[i].state == ModelState.IN_FETCH:
+                            avail_at = current_time + self.GPU_state.shortest_time_to_fetch_end(
+                                placed_model_states[i].model.model_id, current_time)
+                        else:
+                            avail_at = placed_model_states[i].reserved_until
+                        latest_avail = max(latest_avail, avail_at)
+                        i += 1
+                    return latest_avail - current_time + fetch_time
 
         if self.GPU_state.does_have_idle_copy(task_model_states[0].model, current_time):
             return 0

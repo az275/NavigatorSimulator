@@ -13,6 +13,7 @@ from core.events import *
 import pandas as pd
 from workers.heft_task_worker import *
 from workers.shepherd_task_worker import *
+from schedulers.algo.herd_algo import get_herd_assignment
 
 import gurobipy as gp
 from gurobipy import GRB
@@ -59,6 +60,59 @@ class Simulation(object):
     def get_model_from_id(self, model_id: int) -> Model:
         all_models = [m for ms in list(self.metadata_service.job_type_models.values()) for m in ms]
         return list(filter(lambda m: m.model_id == model_id, all_models))[0]
+    
+    def run_herd_scheduler(self, current_time: float):
+        curr_send_rates = {}
+        for jt in self.job_types_list:
+            jobs_since_last_sched = [j for j in self.jobs.values() if j.job_type_id == jt and \
+                                        j.tasks[0].log.task_arrival_at_scheduler_timestamp > (current_time - HERD_PERIODICITY) and \
+                                        j.tasks[0].log.task_arrival_at_scheduler_timestamp <= current_time]
+            curr_send_rates[jt] = len(jobs_since_last_sched) / HERD_PERIODICITY * 1000 + 5 
+            # TODO: minimum send rate? 
+        self.workers = []
+
+        task_types = get_task_types(self.job_types_list)
+        models_by_wf = list(self.metadata_service.job_type_models.values())
+        all_models = [m for jt in self.job_types_list for m in models_by_wf[jt]]
+        task_tputs = {(0,0): 270, (0,1): 45, (0,2): 270, (0,3): 70,
+                        (1,0): 125, (1,1): 7555, (1,2): 92, (1,3): 4.82}
+        (group_sizes, stream_groups) = get_herd_assignment(
+            task_types, all_models, task_tputs, curr_send_rates)
+        
+        worker_groups = []
+        worker_counter = 0
+        for i, group_size in enumerate(group_sizes):
+            group_workers = []
+            if self.simulation_name == "shepherd":
+                group_workers = [ShepherdWorker(self, worker_counter+j, 24, i) for j in range(int(group_size))]
+            else:
+                group_workers = [HeftTaskWorker(self, worker_counter+j, 24) for j in range(int(group_size))]
+
+            worker_counter += len(group_workers)
+            self.workers += group_workers
+            worker_groups.append(group_workers)
+
+        task_type_assignments = {}
+        for (sid, group_id) in stream_groups:
+            task_type_assignments[task_types[sid]] = group_id
+
+        self.state = ShepherdState(worker_groups, task_type_assignments)
+
+        if current_time == 0 and ENABLE_MODEL_PREFETCH:
+            for worker in self.workers:
+                # randomly choose a model to prefetch
+                group_model_ids = []
+                if self.simulation_name == "shepherd":
+                    group_model_ids = self.state.group_models[worker.group_id]
+                else:
+                    group_model_ids = [get_model_id_for_task_type(tt) for tt in task_types]
+
+                if group_model_ids:
+                    preloaded_model_id = np.random.choice(list(group_model_ids))
+                    preloaded_model = [m for ms in models_by_wf for m in ms if m.model_id == preloaded_model_id][0]
+                    print(f"W{worker.worker_id} PRELOADED {preloaded_model_id}")
+                    worker.GPU_state.prefetch_model(preloaded_model)
+                
 
     def initialize_model_placement_at_workers(self):
         """Initial object placement to home node"""
@@ -175,15 +229,25 @@ class Simulation(object):
     
     def initialize_workers(self):
         if self.job_split == "PER_TASK":
-            worker_configs = self.initialize_model_placement_at_workers()
-            for i, config in enumerate(worker_configs):
+            if ALLOCATION_STRATEGY == "HERD":
+                self.run_herd_scheduler(0)
+                self.initialize_external_clients()
+                self.event_queue.put(EventOrders(
+                    HERD_PERIODICITY, StartHerdSchedulerRerun(self)))
+            else:
+                worker_configs = self.initialize_model_placement_at_workers()
+                for i, config in enumerate(worker_configs):
+                    if self.simulation_name == "shepherd":
+                        self.workers.append(ShepherdWorker(self, i, config[0], 0))
+                    else:
+                        self.workers.append(HeftTaskWorker(self, i, config[0]))
+                    for model in config[1]:
+                        self.metadata_service.add_model_cached_location(model, i, 0)
+                        self.workers[-1].GPU_state.prefetch_model(model)
                 if self.simulation_name == "shepherd":
-                    self.workers.append(ShepherdWorker(self, i, config[0], 0))
-                else:
-                    self.workers.append(HeftTaskWorker(self, i, config[0]))
-                for model in config[1]:
-                    self.metadata_service.add_model_cached_location(model, i, 0)
-                    self.workers[-1].GPU_state.prefetch_model(model)
+                    self.state = ShepherdState(
+                        [self.workers],
+                        { tt: 0 for tt in get_task_types(self.job_types_list) })
             self.initialize_external_clients()
 
     def initialize_external_clients(self):
