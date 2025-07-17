@@ -178,7 +178,7 @@ class BatchPreemptionAtWorker(Event):
             # if outdated decision, or all batch tasks were dropped, send back tasks for rescheduling
             current_batches = [s.reserved_batch for s in self.worker.GPU_state.state_at(current_time) if s.reserved_batch]
             return [EventOrders(
-                current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size),
+                current_time + (0 if self.batch.size() == 0 else CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size)),
                 BatchRejectionAtWorker(self.simulation, self.worker, self.batch, 
                                        current_worker_batch=(current_batches[0] if current_batches else None)))]
         
