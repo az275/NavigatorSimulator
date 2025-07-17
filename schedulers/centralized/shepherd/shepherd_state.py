@@ -2,10 +2,15 @@ from core.workflow import *
 from core.batch import Batch
 from schedulers.algo.herd_algo import *
 
+import pandas as pd
+
 
 class ShepherdState:
 
     _batch_counter = 0
+    allocation_log = {}
+    task_drop_log = pd.DataFrame(columns=["job_id", "workflow_id", "task_id",
+                                          "drop_time", "arrival_time", "slo", "deadline"])
 
     def __init__(self, worker_groups: list[list], task_type_to_group: dict[tuple[int,int],int]):
         self.worker_groups = worker_groups
@@ -20,6 +25,9 @@ class ShepherdState:
         for group in self.worker_groups:
             for worker in group:
                 self.worker_states[worker.worker_id] = None
+
+        # for round-robin worker ordering
+        self.next_worker_idxs = [0 for _ in self.worker_groups]
 
     def update_batch_counter(self):
         ShepherdState._batch_counter += 1
@@ -41,3 +49,19 @@ class ShepherdState:
     def assign_batch_to_worker(self, worker_id: int, batch: Batch):
         assert(self.worker_states[worker_id] is None)
         self.worker_states[worker_id] = batch
+
+    # def __str__(self):
+    #     s = ""
+    #     for i, group in enumerate(self.worker_groups):
+    #         s += f"Group {i} contains workers {[w.worker_id for w in group]}\n"
+        
+    #     s += "\n"
+
+    #     return s
+
+        #  self.worker_groups = worker_groups
+        # self.task_type_to_group = task_type_to_group
+        # self.group_task_types = [[tt for tt, gid in self.task_type_to_group.items() if gid==group] 
+        #                          for group in range(len(self.worker_groups))]
+        # self.task_type_to_model = { tt: get_model_id_for_task_type(tt) for tt in self.task_type_to_group.keys() }
+        # self.group_models = [set(self.task_type_to_model[tt] for tt in gtts) for gtts in self.group_task_types]
