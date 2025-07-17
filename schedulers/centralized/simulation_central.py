@@ -102,7 +102,7 @@ class Simulation_central(Simulation):
         for task in tasks:
             if task.model.model_id not in self.model_queues:
                 self.model_queues[task.model.model_id] = PriorityQueue()
-            self.model_queues[task.model.model_id].put(OrderedTask(task))
+            self.model_queues[task.model.model_id].put(OrderedTask(task, current_time))
             arrived_groups.add(self.state.task_type_to_group[task.task_type])
         events = []
         for group in arrived_groups:
@@ -132,15 +132,10 @@ class Simulation_central(Simulation):
         self.generate_all_jobs()
 
         last_time = 0
-        while self.remaining_jobs > 0:
+        while (self.remaining_jobs - len(ShepherdState.task_drop_log)) > 0:
             cur_event = self.event_queue.get()
-            
-            if type(cur_event.event) in [BatchStartEvent] and \
-                cur_event.event.worker.did_abandon_batch(cur_event.event.batch_id):
-                continue
 
-            if type(cur_event.event) in [BatchEndEvent] and \
-                cur_event.event.worker.did_abandon_batch(cur_event.event.batch.id):
+            if cur_event.event.should_abandon_event(cur_event.current_time, {}):
                 continue
             
             print(cur_event.to_string())

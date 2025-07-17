@@ -26,7 +26,8 @@ WORKFLOW_LIST = [
                     12: [9, 9, 9, 10],
                     6: [7, 7, 7, 8]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05,
+                "SLO": 50},
                {"MODEL_NAME": "vision_encoder",
                 "MODEL_ID": 1,
                 "TASK_INDEX": 1,
@@ -41,7 +42,8 @@ WORKFLOW_LIST = [
                 "BATCH_SIZES": [1, 4, 8, 16],
                 "BATCH_EXEC_TIME": [31, 98, 183, 349],
                 "MIG_BATCH_EXEC_TIMES": {24: [31, 98, 183, 349]},
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05,
+                "SLO": 155},
                {"MODEL_NAME": "flmr",
                 "MODEL_ID": 2,
                 "TASK_INDEX": 2,
@@ -60,7 +62,8 @@ WORKFLOW_LIST = [
                     12: [1.5, 1.7, 1.7, 1.8, 2.3, 2.8],
                     6: [1.3, 1.4, 1.4, 1.5, 1.9, 2.3]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05,
+                "SLO": 8.5},
                {"MODEL_NAME": "search",
                 "MODEL_ID": 3,
                 "TASK_INDEX": 3,
@@ -79,7 +82,8 @@ WORKFLOW_LIST = [
                     12: [14, 50, 90, 164, 328],
                     6: [14, 50, 90, 164, 328]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05}
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.05,
+                "SLO": 90}
                ]
      },
      {"JOB_TYPE": 1,
@@ -103,7 +107,8 @@ WORKFLOW_LIST = [
                     24: [65.0, 68.0, 69.4, 72.1],
                     12: [65.0, 68.0, 69.4, 72.1] # TODO: update with real nums
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.182},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.182,
+                "SLO": 325},
                {"MODEL_NAME": "encode_search-ivf",
                 "MODEL_ID": 5,
                 "TASK_INDEX": 1,
@@ -122,7 +127,8 @@ WORKFLOW_LIST = [
                     12: [16.7, 17.2, 17.5, 17.5],
                     6: [16.5, 16.9, 16.9, 17.3]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.414},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.414,
+                "SLO": 83.5},
                {"MODEL_NAME": "text_check",
                 "MODEL_ID": 6,
                 "TASK_INDEX": 2,
@@ -139,7 +145,8 @@ WORKFLOW_LIST = [
                 "MIG_BATCH_EXEC_TIMES": {
                     24: [3.36, 3.72], 12: [4.04, 3.97], 6: [5.66, 9.51]
                 },
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.65},
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.65,
+                "SLO": 16.8},
                {"MODEL_NAME": "aggregate-tts",
                 "MODEL_ID": 7,
                 "TASK_INDEX": 3,
@@ -154,7 +161,8 @@ WORKFLOW_LIST = [
                 "BATCH_SIZES": [1],
                 "BATCH_EXEC_TIME": [87.3, 164],
                 "MIG_BATCH_EXEC_TIMES": {24: [87.3, 164], 12: [149.3, 1350]},
-                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.338}
+                "EXEC_TIME_COEFFICIENT_OF_VARIATION": 0.338,
+                "SLO": 436.5}
                ]
      }
 ]

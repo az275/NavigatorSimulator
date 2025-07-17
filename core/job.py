@@ -94,7 +94,8 @@ class Job(object):
                                 task_cfg["BATCH_SIZES"],
                                 task_cfg["BATCH_EXEC_TIME"],
                                 task_cfg["MIG_BATCH_EXEC_TIMES"],
-                                task_cfg["EXEC_TIME_COEFFICIENT_OF_VARIATION"])
+                                task_cfg["EXEC_TIME_COEFFICIENT_OF_VARIATION"],
+                                task_cfg["SLO"])
 
             self.tasks.append(current_task)
 

@@ -20,18 +20,46 @@ class OrderedTask:
         Task wrapper for PriorityQueue. Ordered by increasing task arrival time.
     """
 
-    def __init__(self, task: Task):
+    def __init__(self, task: Task, current_time: float):
         self.task = task
-        self.priority = task.log.task_arrival_at_scheduler_timestamp
+        self.task_arrival_time = current_time
+        self.deadline = current_time + task.slo
 
     def __lt__(self, other):
-        return self.priority < other.priority
+        return self.deadline < other.deadline
     
     def __str__(self):
         return f"[PRIORITY: {self.priority}] {self.task}"
     
     def __repr__(self):
         return self.__str__()
+
+
+def _drop_bad_tasks(state: ShepherdState, model_queue: list[OrderedTask], time: float):
+    skipped_tasks = []
+    while model_queue.qsize() > 0:
+        ot = model_queue.get()
+        if time < ot.task.log.task_arrival_at_scheduler_timestamp:
+            skipped_tasks.append(ot)
+            continue
+        
+        # drop tasks whose SLOs can't be satisfied
+        # TODO: grace period
+        if time >= ot.deadline:
+            ShepherdState.task_drop_log.loc[len(ShepherdState.task_drop_log)] = {
+                "job_id": ot.task.job_id,
+                "workflow_id": ot.task.task_type[0],
+                "task_id": ot.task.task_type[1],
+                "drop_time": time,
+                "arrival_time": ot.task_arrival_time,
+                "slo": ot.task.slo,
+                "deadline": ot.deadline
+            }
+        else:
+            skipped_tasks.append(ot)
+    
+    for ot in skipped_tasks:
+        model_queue.put(ot)
 
 
 def _flex_form_largest_batch(state: ShepherdState, model_queue: list[OrderedTask], time: float) -> Batch:
@@ -73,13 +101,12 @@ def _flex_get_largest_candidate_batch(task_types: list[tuple[int,int]],
 
 
 def flex_schedule_job_on_arrival(simulation, state: ShepherdState, model_queues: dict[int, PriorityQueue], job: Job, current_time: float):
-    # TODO: priority by SLO? task queues are FCFS
     arrived_groups = set()
     for task in job.tasks:
         if len(task.required_task_ids) == 0:
             if task.model.model_id not in model_queues:
                 model_queues[task.model.model_id] = PriorityQueue()
-            model_queues[task.model.model_id].put(OrderedTask(task))
+            model_queues[task.model.model_id].put(OrderedTask(task, current_time))
             arrived_groups.add(state.task_type_to_group[task.task_type])
 
     events = []
@@ -95,57 +122,75 @@ def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int,
         possible across all models and attempts to assign a worker to the batch in order
         of decreasing estimated execution start time.
     """
+    for mq in model_queues.values():
+        _drop_bad_tasks(state, mq, current_time)
+    
     events = []
+    
     unassigned_workers = state.worker_groups[group].copy()
+    unassigned_workers = unassigned_workers[state.next_worker_idxs[group]:] + unassigned_workers[:state.next_worker_idxs[group]]
+
+    worker_idx = 0
+
     largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
         state.group_task_types[group], model_queues, current_time)
-    while unassigned_workers and largest_batch_size > 0:
-        best_worker = min(unassigned_workers,
-                          key=lambda w: w.get_wait_time(current_time, largest_batch_model_id))
+    while worker_idx < len(unassigned_workers) and largest_batch_size > 0:
+        next_worker = unassigned_workers[worker_idx]
+        # best_worker = min(unassigned_workers,
+        #                   key=lambda w: w.get_wait_time(current_time, largest_batch_model_id))
         
         if not ENABLE_DYNAMIC_MODEL_LOADING:
-            if all(m.model_id != largest_batch_model_id for m in best_worker.GPU_state.placed_models(current_time)):
-                unassigned_workers.remove(best_worker)
+            if all(m.model_id != largest_batch_model_id for m in next_worker.GPU_state.placed_models(current_time)):
+                worker_idx += 1
+                # unassigned_workers.remove(next_worker)
                 continue
         
         # when it is impossible for worker to load model for some reason
-        if best_worker.get_wait_time(current_time, largest_batch_model_id) == np.inf:
-            unassigned_workers.remove(best_worker)
+        if next_worker.get_wait_time(current_time, largest_batch_model_id) == np.inf:
+            worker_idx += 1
+            # unassigned_workers.remove(next_worker)
             continue
 
         # NOTE: workers are assumed to run only 1 batch at a time
-        curr_batch = state.worker_states[best_worker.worker_id]
+        curr_batch = state.worker_states[next_worker.worker_id]
         curr_batch_size = curr_batch.size() if not curr_batch is None else 0
 
         if curr_batch_size == 0:
             # assign batch to best worker
             batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
-            state.assign_batch_to_worker(best_worker.worker_id, batch)
+            state.assign_batch_to_worker(next_worker.worker_id, batch)
             events.append(EventOrders(
                 current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                BatchArrivalAtWorker(simulation, best_worker, batch)))
+                BatchArrivalAtWorker(simulation, next_worker, batch)))
             # update candidate batch
             largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
                 state.group_task_types[group], model_queues, current_time)
         elif largest_batch_size >= FLEX_LAMBDA * curr_batch_size:
             # assign batch to best worker
             batch = _flex_form_largest_batch(state, model_queues[largest_batch_model_id], current_time)
-            old_batch_id = state.worker_states[best_worker.worker_id].id
-            state.preempt_batch_on_worker(best_worker.worker_id, batch)
+            old_batch_id = state.worker_states[next_worker.worker_id].id
+            state.preempt_batch_on_worker(next_worker.worker_id, batch)
             events.append(EventOrders(
                 current_time + CPU_to_CPU_delay(batch.size()*batch.tasks[0].input_size), 
-                BatchPreemptionAtWorker(simulation, best_worker, batch, old_batch_id)))
+                BatchPreemptionAtWorker(simulation, next_worker, batch, old_batch_id)))
             # update candidate batch
             largest_batch_model_id, largest_batch_size = _flex_get_largest_candidate_batch(
                 state.group_task_types[group], model_queues, current_time)
         
         # remove worker from consideration
-        unassigned_workers.remove(best_worker)
+        worker_idx += 1
+        # unassigned_workers.remove(best_worker)
+
+    state.next_worker_idxs[group] = (state.next_worker_idxs[group] + worker_idx) % len(state.next_worker_idxs)
+    
     return events
 
 
 def flex_schedule_on_batch_completion(simulation, state: ShepherdState, model_queues: dict[int, PriorityQueue], 
                                       worker: Worker, completed_batch: Batch, current_time: float):
+    for mq in model_queues.values():
+        _drop_bad_tasks(state, mq, current_time)
+    
     # if alr. assigned to a new batch do nothing
     if state.worker_states[worker.worker_id].id != completed_batch.id:
         return []

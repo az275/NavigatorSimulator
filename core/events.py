@@ -2,6 +2,8 @@ from core.job import *
 from core.network import *
 from core.config import *
 
+from schedulers.centralized.shepherd.shepherd_state import ShepherdState
+
 
 class Event(object):
     """ Abstract class representing events. """
@@ -14,6 +16,9 @@ class Event(object):
         """ Returns any events that should be added to the queue. """
         raise NotImplementedError("The run() method must be implemented by "
                                   "each class subclassing Event")
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        raise NotImplementedError("should_abandon_event() must be implemented")
 
     def to_string(self, current_time):
         """ Returns the string describing the event """
@@ -42,6 +47,10 @@ class JobArrivalAtScheduler(Event):
         #     new_events = self.simulation.schedule_job_and_send_job(
         #         self.job, current_time)
         return new_events
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        drop_log = ShepherdState.task_drop_log
+        return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job.id).any()
 
     def to_string(self):
         return "[Job Arrival at Scheduler (Job {})] ++".format(self.job.id)
@@ -59,11 +68,22 @@ class TasksArrivalAtScheduler(Event):
         self.tasks = tasks
 
     def run(self, current_time):
+        # leave out dropped tasks
+        self.tasks = [task for task in self.tasks 
+                      if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+
         for task in self.tasks:
             # only set if not set already (avoid changing order for preempted tasks)
             if task.log.task_arrival_at_scheduler_timestamp == 0:
                 task.log.task_arrival_at_scheduler_timestamp = current_time
+
         return self.simulation.schedule_tasks_on_arrival(self.tasks, current_time)
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        # NOTE: if only some subset of tasks are dropped, drops in run()
+        drop_log = ShepherdState.task_drop_log
+        return all((drop_log[current_time >= drop_log["drop_time"]]["job_id"] == task.job_id).any() 
+                   for task in self.tasks)
 
     def to_string(self):
         return f"[Tasks Arrival at Scheduler (Type: {self.tasks[0].task_type}, Job IDs: {list(map(lambda t: t.job_id, self.tasks))})] ++"
@@ -86,6 +106,10 @@ class BatchRejectionAtWorker(Event):
         self.simulation.state.worker_rejected_batch(self.worker.worker_id, self.batch, self.current_worker_batch)
         return [EventOrders(current_time, TasksArrivalAtScheduler(self.simulation, self.batch.tasks))] # reschedule batch
 
+    def should_abandon_event(self, current_time, kwargs: dict):
+        # already a drop event
+        return False
+
     def to_string(self):
         return f"[Batch {self.batch.id} Sent Back by Worker {self.worker.worker_id}]"
 
@@ -101,6 +125,9 @@ class BatchArrivalAtWorker(Event):
         self.batch = batch
 
     def run(self, current_time):
+        self.batch.tasks = [task for task in self.batch.tasks 
+                            if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+
         # NOTE: Sends back tasks if busy (shepherd) or doesn't have model (static heft)  
         if (self.simulation.simulation_name != "shepherd" and not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time)) or \
             (self.simulation.simulation_name == "shepherd" and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))) or \
@@ -112,6 +139,12 @@ class BatchArrivalAtWorker(Event):
         for task in self.batch.tasks:
             task.log.set_task_placed_on_worker_queue_timestamp(current_time)
         return self.worker.maybe_start_batch(self.batch, current_time)
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        # NOTE: if only some subset of tasks are dropped, drops in run()
+        drop_log = ShepherdState.task_drop_log
+        return all((drop_log[current_time >= drop_log["drop_time"]]["job_id"] == task.job_id).any() 
+                   for task in self.batch.tasks)
 
     def to_string(self):
         return f"[Batch {self.batch.id} Arrival at Worker {self.worker.worker_id} (Type: {self.batch.tasks[0].task_type}, Job IDs: {self.batch.job_ids})] ++"
@@ -129,8 +162,11 @@ class BatchPreemptionAtWorker(Event):
         self.old_batch_id = old_batch_id # preempted batch
 
     def run(self, current_time):
+        self.batch.tasks = [task for task in self.batch.tasks 
+                            if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+
         # check if batch to be preempted still exists/is actively executing
-        if any(s.reserved_batch and s.reserved_batch.id == self.old_batch_id 
+        if len(self.batch.tasks) > 0 and any(s.reserved_batch and s.reserved_batch.id == self.old_batch_id 
                for s in self.worker.GPU_state.state_at(current_time)):
             for task in self.batch.tasks:
                 task.log.set_task_placed_on_worker_queue_timestamp(current_time)
@@ -139,12 +175,16 @@ class BatchPreemptionAtWorker(Event):
             # NOTE: marks as abandoned anyway in case prior assigned batch
             # has not yet arrived
             Worker._abandoned_batches.append(self.old_batch_id)
-            # if outdated decision, send back tasks for rescheduling
+            # if outdated decision, or all batch tasks were dropped, send back tasks for rescheduling
             current_batches = [s.reserved_batch for s in self.worker.GPU_state.state_at(current_time) if s.reserved_batch]
             return [EventOrders(
                 current_time + CPU_to_CPU_delay(self.batch.size()*self.batch.tasks[0].input_size),
                 BatchRejectionAtWorker(self.simulation, self.worker, self.batch, 
                                        current_worker_batch=(current_batches[0] if current_batches else None)))]
+        
+    def should_abandon_event(self, current_time, kwargs: dict):
+        # should notify scheduler with batch rejection even if full batch was dropped
+        return False
 
     def to_string(self):
         return f"[Batch Preemption at Worker {self.worker.worker_id} (Batch {self.old_batch_id} preempted)]"
@@ -171,6 +211,10 @@ class JobArrivalAtWorker(Event):
         #     new_events = self.simulation.schedule_job_and_send_job(
         #         self.job, current_time)
         return new_events
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        drop_log = ShepherdState.task_drop_log
+        return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job.id).any()
 
     def to_string(self):
         return "[Job Arrival at Worker (Job {})] ++".format(self.job.id)
@@ -189,6 +233,10 @@ class TaskArrival(Event):
         # log tracking for this task
         self.task.log.set_task_placed_on_worker_queue_timestamp(current_time)
         return self.worker.add_task(current_time, self.task)
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        drop_log = ShepherdState.task_drop_log
+        return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job_id).any()
 
     def to_string(self):
         return "[Task Arrival (Job {} - Task {}) at {}] ---".format(self.job_id, self.task.task_id, self.worker)
@@ -207,6 +255,10 @@ class InterResultArrival(Event):
             current_time)
         return self.worker.receive_intermediate_result(current_time, self.prev_task, self.cur_task)
 
+    def should_abandon_event(self, current_time, kwargs: dict):
+        drop_log = ShepherdState.task_drop_log
+        return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.cur_task.job_id).any()
+
     def to_string(self):
         return "[Intermediate Results Arrival]: worker:" + str(self.worker.worker_id) + ", prev_task_id:" + str(self.prev_task.task_id) + ", cur_task_id:" + str(self.cur_task.task_id)
 
@@ -222,6 +274,9 @@ class BatchStartEvent(Event):
 
     def run(self, current_time):
         return []
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        return self.worker.did_abandon_batch(self.batch_id)
 
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
@@ -242,43 +297,46 @@ class BatchEndEvent(Event):
             return []
         return self.worker.free_slot(current_time, self.batch, self.task_type)
 
+    def should_abandon_event(self, current_time, kwargs: dict):
+        return self.worker.did_abandon_batch(self.batch.id)
+
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
         return f"[Batch {self.batch.id} End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
 
 
 # for PER_JOB scheduler
-class JobAssignEvent(Event):
-    """
-    Used in PER_JOB scheduler.
-    Event to signify that a JOB has been assigned to a worker for execution.
-    JobArrivalAtScheduler delay generate one another in a chain reaction.
-    """
+# class JobAssignEvent(Event):
+#     """
+#     Used in PER_JOB scheduler.
+#     Event to signify that a JOB has been assigned to a worker for execution.
+#     JobArrivalAtScheduler delay generate one another in a chain reaction.
+#     """
 
-    def __init__(self, worker, job):
-        self.worker = worker
-        self.job = job
+#     def __init__(self, worker, job):
+#         self.worker = worker
+#         self.job = job
 
-    def run(self, current_time):
-        return self.worker.add_job(current_time, self.job)
+#     def run(self, current_time):
+#         return self.worker.add_job(current_time, self.job)
 
-    def to_string(self):
-        return "[Job Assign] ---"
+#     def to_string(self):
+#         return "[Job Assign] ---"
 
 
-class JobEndEvent(Event):
-    """ Event to signify that a JOB has been executed by the NODE.
-    JobArrivalAtScheduler delay generate one another in a chain reaction."""
+# class JobEndEvent(Event):
+#     """ Event to signify that a JOB has been executed by the NODE.
+#     JobArrivalAtScheduler delay generate one another in a chain reaction."""
 
-    def __init__(self, worker, job):
-        self.worker = worker
-        self.job = job
+#     def __init__(self, worker, job):
+#         self.worker = worker
+#         self.job = job
 
-    def run(self, current_time):
-        return self.worker.free_slot(current_time, self.job)
+#     def run(self, current_time):
+#         return self.worker.free_slot(current_time, self.job)
 
-    def to_string(self):
-        return "[Job End] ==="
+#     def to_string(self):
+#         return "[Job End] ==="
 
 
 from workers.worker import Worker
@@ -315,6 +373,9 @@ class AbortAllJobsEvent(Event):
             events.append(EventOrders(current_time, RerunHerdScheduler(self.simulation)))
 
         return events
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        return False
 
     def to_string(self):
         return "[Abort All Jobs]"
@@ -334,6 +395,9 @@ class StartHerdSchedulerRerun(Event):
             return [EventOrders(current_time, 
                                 AbortAllJobsEvent(self.simulation, run_herd_sched=True))]
         return []
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        return False
 
     def to_string(self):
         return "[HERD Scheduler Rerun Queued]"
@@ -351,8 +415,13 @@ class RerunHerdScheduler(Event):
     def run(self, current_time):
         self.simulation.run_herd_scheduler(current_time)
         events = self.simulation.schedule_tasks_on_queue(current_time)
+        if HERD_PERIODICITY == np.inf:
+            return events
         return events + [EventOrders(current_time + HERD_PERIODICITY,
                                      StartHerdSchedulerRerun(self.simulation))]
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        return False
 
     def to_string(self):
         return "[HERD Scheduler Rerun]"
