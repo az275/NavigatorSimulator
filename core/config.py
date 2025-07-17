@@ -29,7 +29,7 @@ HERD_PERIODICITY = np.inf
 # TODO: decentralized scheduling w job abortion & realloc
 
 """  -------        General Scheduling Parameters  --------- """
-ENABLE_MULTITHREADING = False # allow multiple models on same partition to run at once
+ENABLE_MULTITHREADING = True # allow multiple models on same partition to run at once
 ENABLE_MODEL_PREFETCH = False
 ENABLE_DYNAMIC_MODEL_LOADING = True
 
