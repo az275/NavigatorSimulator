@@ -6,6 +6,8 @@ from core.network import *
 from core.events import *
 from schedulers.algo.nav_heft_algo import *
 
+import random
+
 
 class HeftTaskWorker(TaskWorker):
     def __init__(self, simulation, worker_id, total_memory):
@@ -33,7 +35,10 @@ class HeftTaskWorker(TaskWorker):
         # Initialize max wait time
         if task.task_type not in self.max_wait_times or self.max_wait_times[task.task_type] < 0:
             self.max_wait_times[task.task_type] = current_time + task.max_wait_time
-        
+
+        if (not ENABLE_MULTITHREADING) and any(s.reserved_batch for s in self.GPU_state.state_at(current_time)):
+            return []
+
         return self.check_task_queue(task.task_type, current_time)
 
     def free_slot(self, current_time, batch: Batch, task_type):
@@ -59,9 +64,20 @@ class HeftTaskWorker(TaskWorker):
             self.max_wait_times[task_type] = -1
 
         # start next batch
-        for task_type in self.queue_history.keys():
+        if ENABLE_MULTITHREADING:
+            for task_type in self.queue_history.keys():
+                batch_end_events = self.check_task_queue(task_type, current_time)
+                events += batch_end_events
+        else:
             batch_end_events = self.check_task_queue(task_type, current_time)
             events += batch_end_events
+
+            remaining_task_types = [tt for tt in self.queue_history.keys() if tt != task_type]
+            while not batch_end_events and remaining_task_types:
+                rand_task_type = random.choice(remaining_task_types)
+                remaining_task_types.remove(rand_task_type)
+                batch_end_events = self.check_task_queue(rand_task_type, current_time)
+                events += batch_end_events
         return events
 
     #  --------------------------- DECENTRALIZED WORKER SCHEDULING  ----------------------
@@ -102,7 +118,23 @@ class HeftTaskWorker(TaskWorker):
         tasks = []
         for task in task_queue:
             if current_time >= task.log.task_placed_on_worker_queue_timestamp:
+                # skip dropped tasks
+                if (self.simulation.task_drop_log["job_id"]==task.job_id).any():
+                    continue
+
+                # drop tasks whose SLO can't be met
+                if (current_time + task.mig_batch_exec_time[24][0]) > (task.log.task_placed_on_worker_queue_timestamp + task.slo) * (1 + SLO_SLACK):
+                    for job_task in task.job.tasks:
+                        self.rm_task_in_queue_history(job_task, current_time)
+                    self.simulation.task_drop_log.loc[len(self.simulation.task_drop_log)] = {
+                        "job_id": task.job_id, "workflow_id": task.task_type[0], "task_id": task.task_type[1],
+                        "drop_time": current_time, "arrival_time": task.log.task_placed_on_worker_queue_timestamp,
+                        "slo": task.slo, "deadline": task.slo + task.log.task_placed_on_worker_queue_timestamp
+                    }
+                    continue
+                
                 tasks.append(task)
+
         if len(tasks) == 0:
             return []
         else:
@@ -248,6 +280,8 @@ class HeftTaskWorker(TaskWorker):
                 if self.GPU_state.can_fetch_model_on_eviction(task_model, current_time):
                     # evictions are free
                     return fetch_time
+                elif self.GPU_state._total_memory < task_model.model_size: # partition too small
+                    return np.inf
                 else: # not enough space to load right away
                     latest_avail = 0
                     placed_model_states = [s for s in self.GPU_state.state_at(current_time) 

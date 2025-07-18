@@ -53,6 +53,8 @@ class Simulation(object):
         self.event_log = pd.DataFrame(columns=["time", "worker_id", "event"])
         self.batch_exec_log = pd.DataFrame(columns=["start_time", "end_time", "worker_id", "workflow_id", 
                                                     "task_id", "batch_size", "job_ids"])
+        self.task_drop_log = pd.DataFrame(columns=["job_id", "workflow_id", "task_id", "drop_time", 
+                                                   "arrival_time", "slo", "deadline"])
 
         print("---- SIMULATION : " + self.simulation_name + "----")
         self.produce_breakdown =  produce_breakdown
@@ -301,7 +303,6 @@ class Simulation(object):
         completed_jobs = [j for j in self.jobs.values() if len(
             j.completed_tasks) == len(j.tasks)]
         print_end_jobs(last_time, completed_jobs, self.jobs)
-        completed_jobs = completed_jobs[int(len(completed_jobs) / 10):] # ignore the warnup jobs
         # 2. Compute the metrics of interest
         response_times = [job.end_time -
                                job.create_time for job in completed_jobs]

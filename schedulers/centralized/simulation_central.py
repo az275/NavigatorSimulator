@@ -85,7 +85,7 @@ class Simulation_central(Simulation):
             print(f"Jobs left: {self.remaining_jobs}")
 
             worker_id = -1
-            if cur_event.event.is_worker_event():
+            if type(cur_event.event).is_worker_event():
                 worker_id = cur_event.event.worker.worker_id
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]
 

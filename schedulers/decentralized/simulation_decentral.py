@@ -36,18 +36,15 @@ class Simulation_decentral(Simulation):
         self.generate_all_jobs()
 
         last_time = 0
-        while self.remaining_jobs > 0:
+        while (self.remaining_jobs - len(self.task_drop_log)) > 0:
             cur_event = self.event_queue.get()
 
             print(cur_event.to_string())
             print(f"Jobs left: {self.remaining_jobs}")
 
             worker_id = -1
-            if type(cur_event.event) == JobArrivalAtWorker:
-                worker_id = cur_event.event.worker_id
-            elif type(cur_event.event) not in [StartHerdSchedulerRerun, RerunHerdScheduler, AbortAllJobsEvent]:
+            if type(cur_event.event).is_worker_event():
                 worker_id = cur_event.event.worker.worker_id
-
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]
 
             assert cur_event.current_time >= last_time
