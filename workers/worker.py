@@ -13,9 +13,10 @@ class Worker(object):
 
     _abandoned_batches = []
 
-    def __init__(self, simulation, worker_id, total_memory):
+    def __init__(self, simulation, worker_id, total_memory, group_id=-1):
         assert(total_memory in [24, 12, 6])
 
+        self.group_id = group_id
         self.worker_id = worker_id
         self.simulation = simulation
         self.total_memory = total_memory
@@ -114,14 +115,16 @@ class Worker(object):
         """
         curr_memory = self.GPU_state.available_memory(current_time)
        
+        # TODO: timestamp model placements
         placed_model_states = self.GPU_state.placed_model_states(current_time)
         if policy == self.LOOKAHEAD_EVICTION:
-            next_models = self.get_next_models(3, current_time)
-            placed_model_states = sorted(
-                placed_model_states,
-                key=lambda m: next_models.index(m.model) if m.model in next_models else len(next_models),
-                reverse=True
-            )
+            raise NotImplementedError("No lookahead yet")
+            # next_models = self.get_next_models(3, current_time)
+            # placed_model_states = sorted(
+            #     placed_model_states,
+            #     key=lambda m: next_models.index(m.model) if m.model in next_models else len(next_models),
+            #     reverse=True
+            # )
 
         models_to_evict = []
         for state in placed_model_states:

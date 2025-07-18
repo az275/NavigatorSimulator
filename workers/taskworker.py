@@ -5,8 +5,8 @@ from schedulers.algo.nav_heft_algo import *
 
 
 class TaskWorker(Worker):
-    def __init__(self, simulation, worker_id, total_memory):
-        super().__init__(simulation, worker_id, total_memory)
+    def __init__(self, simulation, worker_id, total_memory, group_id=-1):
+        super().__init__(simulation, worker_id, total_memory, group_id=group_id)
         self.involved = False
 
     def add_task(self, current_time, task):
@@ -14,21 +14,6 @@ class TaskWorker(Worker):
         Add task into the local task queue
         """
         raise NotImplementedError()
-    
-    def get_next_models(self, lookahead_count: int, current_time: float, info_staleness=0):
-        if lookahead_count <= 0:
-            return []
-        
-        next_models = []
-        task_types_by_arrival, task_queues = self.get_sorted_task_types(current_time)
-        for task_type in task_types_by_arrival:
-            next_model = task_queues[task_type][0].model
-            if next_model != None and next_model not in next_models:
-                next_models.append(next_model)
-            if len(next_models) == lookahead_count:
-                return next_models
-
-        return next_models
 
     def free_slot(self, current_time, batch: Batch, task_type):
         """ Attempts to launch another task. """

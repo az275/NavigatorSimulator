@@ -88,7 +88,7 @@ class Simulation(object):
             if self.simulation_name == "shepherd":
                 group_workers = [ShepherdWorker(self, worker_counter+j, 24, i) for j in range(int(group_size))]
             else:
-                group_workers = [HeftTaskWorker(self, worker_counter+j, 24) for j in range(int(group_size))]
+                group_workers = [HeftTaskWorker(self, worker_counter+j, 24, group_id=i) for j in range(int(group_size))]
 
             worker_counter += len(group_workers)
             self.workers += group_workers

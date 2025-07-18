@@ -10,8 +10,8 @@ import random
 
 
 class HeftTaskWorker(TaskWorker):
-    def __init__(self, simulation, worker_id, total_memory):
-        super().__init__(simulation, worker_id, total_memory)
+    def __init__(self, simulation, worker_id, total_memory, group_id=-1):
+        super().__init__(simulation, worker_id, total_memory, group_id=group_id)
         # {task_obj1:[(preq_task_id0,arrival_time0), (preq_taks_id0, arrival_time1), ...], task2:[( ...],}
         self.waiting_tasks_buffer = defaultdict(lambda: [])
         # keep track of the queue information at time:  [ (time1,[task0,task1,]), (time2,[task1,...]),...]
@@ -280,8 +280,10 @@ class HeftTaskWorker(TaskWorker):
                 if self.GPU_state.can_fetch_model_on_eviction(task_model, current_time):
                     # evictions are free
                     return fetch_time
-                elif self.GPU_state._total_memory < task_model.model_size: # partition too small
-                    return np.inf
+                elif self.GPU_state._total_memory < task_model.model_size:
+                    return np.inf # partition too small
+                elif ALLOCATION_STRATEGY == "HERD" and task_model.model_id not in self.simulation.state.group_models[self.group_id]:
+                    return np.inf # model ID not in worker's HERD-assigned group
                 else: # not enough space to load right away
                     latest_avail = 0
                     placed_model_states = [s for s in self.GPU_state.state_at(current_time) 
