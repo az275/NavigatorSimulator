@@ -42,10 +42,9 @@ def _drop_bad_tasks(state: ShepherdState, model_queue: list[OrderedTask], time: 
         if time < ot.task.log.task_arrival_at_scheduler_timestamp:
             skipped_tasks.append(ot)
             continue
-        
-        # drop tasks whose SLOs can't be satisfied
-        # TODO: grace period
-        if time >= ot.deadline:
+        # drop tasks whose SLOs can't be satisfied within a grace period
+        # earliest task end time >= deadline + grace period
+        if (time + ot.task.mig_batch_exec_time[24][0]) >= ot.deadline * (1 + SLO_SLACK):
             ShepherdState.task_drop_log.loc[len(ShepherdState.task_drop_log)] = {
                 "job_id": ot.task.job_id,
                 "workflow_id": ot.task.task_type[0],
