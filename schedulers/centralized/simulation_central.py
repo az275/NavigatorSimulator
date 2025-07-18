@@ -85,11 +85,8 @@ class Simulation_central(Simulation):
             print(f"Jobs left: {self.remaining_jobs}")
 
             worker_id = -1
-            if type(cur_event.event) == JobArrivalAtWorker:
-                worker_id = cur_event.event.worker_id
-            elif type(cur_event.event) not in [JobArrivalAtScheduler, TasksArrivalAtScheduler, StartHerdSchedulerRerun, RerunHerdScheduler, AbortAllJobsEvent]:
+            if cur_event.event.is_worker_event():
                 worker_id = cur_event.event.worker.worker_id
-
             self.event_log.loc[len(self.event_log)] = [cur_event.current_time, worker_id, cur_event.event.to_string()]
 
             assert cur_event.current_time >= last_time

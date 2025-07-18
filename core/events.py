@@ -24,6 +24,9 @@ class Event(object):
         """ Returns the string describing the event """
         raise NotImplementedError("The to_string() method must be implemented by "
                                   "each class subclassing Event")
+    
+    def is_worker_event():
+        raise NotImplementedError("is_worker_event : () -> bool not implemented")
 
 
 class JobArrivalAtScheduler(Event):
@@ -54,6 +57,9 @@ class JobArrivalAtScheduler(Event):
 
     def to_string(self):
         return "[Job Arrival at Scheduler (Job {})] ++".format(self.job.id)
+    
+    def is_worker_event():
+        return False
     
 
 class TasksArrivalAtScheduler(Event):
@@ -87,6 +93,9 @@ class TasksArrivalAtScheduler(Event):
 
     def to_string(self):
         return f"[Tasks Arrival at Scheduler (Type: {self.tasks[0].task_type}, Job IDs: {list(map(lambda t: t.job_id, self.tasks))})] ++"
+    
+    def is_worker_event():
+        return False
 
 
 class BatchRejectionAtWorker(Event):
@@ -114,6 +123,9 @@ class BatchRejectionAtWorker(Event):
 
     def to_string(self):
         return f"[Batch {self.batch.id} Sent Back by Worker {self.worker.worker_id}]"
+    
+    def is_worker_event():
+        return True
 
 
 class BatchArrivalAtWorker(Event):
@@ -148,6 +160,9 @@ class BatchArrivalAtWorker(Event):
 
     def to_string(self):
         return f"[Batch {self.batch.id} Arrival at Worker {self.worker.worker_id} (Type: {self.batch.tasks[0].task_type}, Job IDs: {self.batch.job_ids})] ++"
+    
+    def is_worker_event():
+        return True
 
 
 class BatchPreemptionAtWorker(Event):
@@ -188,6 +203,9 @@ class BatchPreemptionAtWorker(Event):
 
     def to_string(self):
         return f"[Batch Preemption at Worker {self.worker.worker_id} (Batch {self.old_batch_id} preempted)]"
+    
+    def is_worker_event():
+        return True
 
 
 class JobArrivalAtWorker(Event):
@@ -198,6 +216,7 @@ class JobArrivalAtWorker(Event):
 
     def __init__(self, simulation, job, worker_id):
         self.simulation = simulation
+        self.worker = self.simulation.workers[worker_id]
         self.worker_id = worker_id
         self.job = job
 
@@ -218,6 +237,9 @@ class JobArrivalAtWorker(Event):
 
     def to_string(self):
         return "[Job Arrival at Worker (Job {})] ++".format(self.job.id)
+    
+    def is_worker_event():
+        return True
 
 
 # for PER_TASK scheduler
@@ -240,6 +262,9 @@ class TaskArrival(Event):
 
     def to_string(self):
         return "[Task Arrival (Job {} - Task {}) at {}] ---".format(self.job_id, self.task.task_id, self.worker)
+    
+    def is_worker_event():
+        return True
 
 
 class InterResultArrival(Event):
@@ -261,6 +286,9 @@ class InterResultArrival(Event):
 
     def to_string(self):
         return "[Intermediate Results Arrival]: worker:" + str(self.worker.worker_id) + ", prev_task_id:" + str(self.prev_task.task_id) + ", cur_task_id:" + str(self.cur_task.task_id)
+    
+    def is_worker_event():
+        return True
 
 
 class BatchStartEvent(Event):
@@ -281,6 +309,9 @@ class BatchStartEvent(Event):
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
         return f"[Batch {self.batch_id} Start (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+    
+    def is_worker_event():
+        return True
 
 
 class BatchEndEvent(Event):
@@ -303,6 +334,9 @@ class BatchEndEvent(Event):
     def to_string(self):
         jobs = ",".join([str(id) for id in self.job_ids])
         return f"[Batch {self.batch.id} End (Task {self.task_type}, Jobs {jobs}) at Worker {self.worker.worker_id}]"
+    
+    def is_worker_event():
+        return True
 
 
 # for PER_JOB scheduler
@@ -388,6 +422,9 @@ class AbortAllJobsEvent(Event):
 
     def to_string(self):
         return "[Abort All Jobs]"
+    
+    def is_worker_event():
+        return False
 
 
 class StartHerdSchedulerRerun(Event):
@@ -410,6 +447,9 @@ class StartHerdSchedulerRerun(Event):
 
     def to_string(self):
         return "[HERD Scheduler Rerun Queued]"
+    
+    def is_worker_event():
+        return False
 
 
 class RerunHerdScheduler(Event):
@@ -437,6 +477,9 @@ class RerunHerdScheduler(Event):
 
     def to_string(self):
         return "[HERD Scheduler Rerun]"
+    
+    def is_worker_event():
+        return False
 
 
 class EventOrders:
