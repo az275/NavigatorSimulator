@@ -23,7 +23,11 @@ class OrderedTask:
     def __init__(self, task: Task, current_time: float):
         self.task = task
         self.task_arrival_time = current_time
-        self.deadline = current_time + task.slo
+
+        if SLO_GRANULARITY == "TASK":
+            self.deadline = current_time + task.slo
+        else:
+            self.deadline = current_time + task.job.slo
 
     def __lt__(self, other):
         return self.deadline < other.deadline
@@ -35,7 +39,7 @@ class OrderedTask:
         return self.__str__()
 
 
-def _drop_bad_tasks(state: ShepherdState, model_queue: list[OrderedTask], time: float):
+def _drop_bad_tasks(simulation, model_queue: list[OrderedTask], time: float):
     skipped_tasks = []
     while model_queue.qsize() > 0:
         ot = model_queue.get()
@@ -45,7 +49,7 @@ def _drop_bad_tasks(state: ShepherdState, model_queue: list[OrderedTask], time: 
         # drop tasks whose SLOs can't be satisfied within a grace period
         # earliest task end time >= deadline + grace period
         if (time + ot.task.mig_batch_exec_time[24][0]) >= ot.deadline * (1 + SLO_SLACK):
-            ShepherdState.task_drop_log.loc[len(ShepherdState.task_drop_log)] = {
+            simulation.task_drop_log.loc[len(simulation.task_drop_log)] = {
                 "job_id": ot.task.job_id,
                 "workflow_id": ot.task.task_type[0],
                 "task_id": ot.task.task_type[1],
@@ -122,7 +126,7 @@ def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int,
         of decreasing estimated execution start time.
     """
     for mq in model_queues.values():
-        _drop_bad_tasks(state, mq, current_time)
+        _drop_bad_tasks(simulation, mq, current_time)
     
     events = []
     
@@ -188,7 +192,7 @@ def flex_schedule_tasks_on_arrival(simulation, state: ShepherdState, group: int,
 def flex_schedule_on_batch_completion(simulation, state: ShepherdState, model_queues: dict[int, PriorityQueue], 
                                       worker: Worker, completed_batch: Batch, current_time: float):
     for mq in model_queues.values():
-        _drop_bad_tasks(state, mq, current_time)
+        _drop_bad_tasks(simulation, mq, current_time)
     
     # if alr. assigned to a new batch do nothing
     if state.worker_states[worker.worker_id].id != completed_batch.id:

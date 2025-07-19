@@ -69,7 +69,7 @@ class Simulation(object):
             jobs_since_last_sched = [j for j in self.jobs.values() if j.job_type_id == jt and \
                                         j.tasks[0].log.task_arrival_at_scheduler_timestamp > (current_time - HERD_PERIODICITY) and \
                                         j.tasks[0].log.task_arrival_at_scheduler_timestamp <= current_time]
-            curr_send_rates[jt] = len(jobs_since_last_sched) / HERD_PERIODICITY * 1000 + 5 
+            curr_send_rates[jt] = 5 if current_time == 0 else (len(jobs_since_last_sched) / HERD_PERIODICITY * 1000 + 5) 
             # TODO: minimum send rate? 
         self.workers = []
 
@@ -234,8 +234,9 @@ class Simulation(object):
             if ALLOCATION_STRATEGY == "HERD":
                 self.run_herd_scheduler(0)
                 self.initialize_external_clients()
-                self.event_queue.put(EventOrders(
-                    HERD_PERIODICITY, StartHerdSchedulerRerun(self)))
+                if HERD_PERIODICITY > 0:
+                    self.event_queue.put(EventOrders(
+                        HERD_PERIODICITY, StartHerdSchedulerRerun(self)))
             else:
                 worker_configs = self.initialize_model_placement_at_workers()
                 for i, config in enumerate(worker_configs):
@@ -281,7 +282,7 @@ class Simulation(object):
                         curr_send_rate = SEND_RATES_BY_WORKFLOW[i]["SEND_RATES"][curr_send_rate_idx]
                         self.send_rate_change_times[i].append(curr_time)
 
-                next_job = self.external_clients[idx].create_job(curr_time, j + jid_offset, curr_send_rate)
+                next_job = self.external_clients[idx].create_job(curr_time, j + jid_offset, curr_send_rate, WORKFLOW_LIST[i]["SLO"])
                 self.jobs[next_job.id] = next_job
                 curr_time = next_job.create_time + CPU_to_CPU_delay(next_job.tasks[0].input_size)
 

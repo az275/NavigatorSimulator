@@ -75,7 +75,7 @@ class Simulation_central(Simulation):
         self.generate_all_jobs()
 
         last_time = 0
-        while (self.remaining_jobs - len(ShepherdState.task_drop_log)) > 0:
+        while (self.remaining_jobs - len(self.task_drop_log)) > 0:
             cur_event = self.event_queue.get()
 
             if cur_event.event.should_abandon_event(cur_event.current_time, {}):
@@ -125,11 +125,19 @@ class Simulation_central(Simulation):
         # 1. assign the task in job object to the worker based on hashing
         activation_graph = {}  # {task_id0->worker_id0, ...}
         for task in job.tasks:
-            allocated_worker_id = np.random.choice(
-                [w.worker_id for w in self.workers 
-                 if task.model == None or any(m.model_id==task.model.model_id 
-                                              for m in w.GPU_state.placed_models(current_time))], 
-                replace=True)
+            if ENABLE_DYNAMIC_MODEL_LOADING:
+                if ALLOCATION_STRATEGY == "HERD":
+                    # don't choose worker that is not in the correct group
+                    allocated_worker_id = np.random.choice(
+                        [w.worker_id for w in self.workers if task.model == None or (w.total_memory * 10**6 >= task.model.model_size and \
+                                                                                     task.model.model_id in self.state.group_models[w.group_id])])
+                else:
+                    allocated_worker_id = np.random.choice(
+                        [w.worker_id for w in self.workers if task.model == None or w.total_memory * 10**6 >= task.model.model_size])
+            else:
+                allocated_worker_id = np.random.choice(
+                    [w.worker_id for w in self.workers if task.model == None or any(m.model_id==task.model.model_id 
+                                                                                    for m in w.GPU_state.placed_models(current_time))])
             activation_graph[task.task_id] = allocated_worker_id
         job.assign_ADFG(activation_graph)
 

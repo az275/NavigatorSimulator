@@ -19,6 +19,8 @@ class HeftTaskWorker(TaskWorker):
         self.involved = False
         self.max_wait_times = {}
 
+        self.next_task_type_idx = 0
+
     def add_task(self, current_time, task):
         """
         Add task into the local task queue
@@ -69,15 +71,15 @@ class HeftTaskWorker(TaskWorker):
                 batch_end_events = self.check_task_queue(task_type, current_time)
                 events += batch_end_events
         else:
-            batch_end_events = self.check_task_queue(task_type, current_time)
-            events += batch_end_events
-
-            remaining_task_types = [tt for tt in self.queue_history.keys() if tt != task_type]
-            while not batch_end_events and remaining_task_types:
-                rand_task_type = random.choice(remaining_task_types)
-                remaining_task_types.remove(rand_task_type)
-                batch_end_events = self.check_task_queue(rand_task_type, current_time)
-                events += batch_end_events
+            all_task_types = get_task_types(self.simulation.job_types_list)
+            task_types_left = len(all_task_types)
+            batch_end_events = []
+            while not batch_end_events and task_types_left:
+                if all_task_types[self.next_task_type_idx] in self.queue_history:
+                    batch_end_events = self.check_task_queue(all_task_types[self.next_task_type_idx], current_time)
+                    events += batch_end_events
+                self.next_task_type_idx = (self.next_task_type_idx + 1) % len(all_task_types)
+                task_types_left -= 1
         return events
 
     #  --------------------------- DECENTRALIZED WORKER SCHEDULING  ----------------------
@@ -122,14 +124,33 @@ class HeftTaskWorker(TaskWorker):
                 if (self.simulation.task_drop_log["job_id"]==task.job_id).any():
                     continue
 
+                # get correct task deadline
+                if self.simulation.centralized_scheduler:
+                    if SLO_GRANULARITY == "TASK":
+                        task_deadline = task.log.task_arrival_at_scheduler_timestamp + task.slo
+                        task_arrival = task.log.task_arrival_at_scheduler_timestamp 
+                    else:
+                        task_deadline = task.log.job_creation_timestamp + task.job.slo
+                        task_arrival = task.log.job_creation_timestamp
+                else:
+                    if SLO_GRANULARITY == "TASK":
+                        task_deadline = task.log.task_placed_on_worker_queue_timestamp + task.slo
+                        task_arrival = task.log.task_placed_on_worker_queue_timestamp
+                    else:
+                        task_deadline = task.log.job_creation_timestamp + task.job.slo
+                        task_arrival = task.log.job_creation_timestamp
+
+
                 # drop tasks whose SLO can't be met
-                if (current_time + task.mig_batch_exec_time[24][0]) > (task.log.task_placed_on_worker_queue_timestamp + task.slo) * (1 + SLO_SLACK):
+                if (current_time + task.mig_batch_exec_time[24][0]) >= task_deadline * (1 + SLO_SLACK):
                     for job_task in task.job.tasks:
                         self.rm_task_in_queue_history(job_task, current_time)
                     self.simulation.task_drop_log.loc[len(self.simulation.task_drop_log)] = {
                         "job_id": task.job_id, "workflow_id": task.task_type[0], "task_id": task.task_type[1],
-                        "drop_time": current_time, "arrival_time": task.log.task_placed_on_worker_queue_timestamp,
-                        "slo": task.slo, "deadline": task.slo + task.log.task_placed_on_worker_queue_timestamp
+                        "drop_time": current_time, 
+                        "arrival_time": task_arrival,
+                        "slo": task.slo if SLO_GRANULARITY == "TASK" else task.job.slo, 
+                        "deadline": task_deadline
                     }
                     continue
                 

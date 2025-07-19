@@ -6,7 +6,7 @@ from core.config import *
 
 class Job(object):
 
-    def __init__(self, create_time, job_type_id, job_id):
+    def __init__(self, create_time, job_type_id, job_id, slo):
         """
         A job is a unique object across the simulation execution that has a specific graph of task dependencies (job_type_id)
         """
@@ -22,6 +22,7 @@ class Job(object):
         self.completed_tasks = []
         self.create_time = create_time  
         self.end_time = create_time
+        self.slo = slo
 
 
     def __hash__(self):

@@ -10,7 +10,7 @@ class ExternalClient(object):
         self.simulation = simulation
         self.job_type = job_type
 
-    def create_job(self, current_time, current_job_id, send_rate):
+    def create_job(self, current_time, current_job_id, send_rate, slo):
         job_create_delay = 1 / send_rate * 1000
         if WORKLOAD_DISTRIBUTION == "POISON":
             job_create_delay = np.random.poisson(lam=(1 / send_rate * 1000))
@@ -19,7 +19,7 @@ class ExternalClient(object):
             scale = GAMMA_CV**2 / (1 / send_rate * 1000)
             job_create_delay = np.random.gamma(shape, scale)
         job = Job(create_time=current_time + job_create_delay,
-                  job_type_id=self.job_type, job_id=current_job_id)
+                  job_type_id=self.job_type, job_id=current_job_id, slo=slo)
         job = self.log_job_creation_time(job, current_time + job_create_delay)
         return job
 

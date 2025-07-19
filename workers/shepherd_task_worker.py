@@ -11,10 +11,7 @@ import numpy as np
 
 
 class ShepherdWorker(TaskWorker):
-    def __init__(self, simulation, worker_id, total_memory, group_id):
-        super().__init__(simulation, worker_id, total_memory)
-        self.group_id = group_id
-
+    
     def free_slot(self, current_time, batch: Batch, task_type):
         """ Attempts to launch another task. """
         events = super().free_slot(current_time, batch, task_type)

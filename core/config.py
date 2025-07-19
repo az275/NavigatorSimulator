@@ -5,9 +5,15 @@ VALID_WORKER_SIZES = [24000000, 12000000, 6000000]
 
 """  --------       Workload Parameters    --------  """
 TOTAL_NUM_OF_JOBS_PER_WORKFLOW = {0: 10000}
+TOTAL_NUM_OF_CLIENTS = 3
 
 # TODO: STEP | LINEAR | EXPONENTIAL
-SEND_RATES_BY_WORKFLOW = {"SEND_RATES": [55], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []},
+SEND_RATES_BY_CLIENT = [{"SEND_RATES": [95], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []},
+                        {"SEND_RATES": [125], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []},
+                        {"SEND_RATES": [55], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []}]
+SLOS_BY_CLIENT = [[], [], []] # []
+
+SEND_RATES_BY_WORKFLOW = {"SEND_RATES": [95], "SEND_RATE_CHANGE_INTERVALS": [], "SEND_RATE_CHANGE_CURVES": []},
 
 WORKLOAD_DISTRIBUTION = "POISON"  # UNIFORM | POISON | GAMMA
 
@@ -24,12 +30,12 @@ RESCHEDULE_THREASHOLD = 1.5
 """  -------        Shepherd Parameters  --------- """
 FLEX_LAMBDA = 3.03
 HERD_K = 1.3
-import numpy as np
-HERD_PERIODICITY = np.inf
+HERD_PERIODICITY = 0
 # TODO: decentralized scheduling w job abortion & realloc
 
 """  -------        General Scheduling Parameters  --------- """
 SLO_SLACK = 0.1
+SLO_GRANULARITY = "JOB" # TASK | JOB
 
 ENABLE_MULTITHREADING = False # allow multiple models on same partition to run at once
 ENABLE_MODEL_PREFETCH = False

@@ -5,6 +5,7 @@
 WORKFLOW_LIST = [
     {"JOB_TYPE": 0,         # ID of the type of workflow (dependency graph)
      "JOB_NAME": "textvision",
+     "SLO": 303.5,
      # the minimum amount of time necessary to execute the whole job
      "BEST_EXEC_TIME": 51.7,
      "TASKS": [
@@ -88,6 +89,7 @@ WORKFLOW_LIST = [
      },
      {"JOB_TYPE": 1,
      "JOB_NAME": "tts",
+     "SLO": 861.8,
      # the minimum amount of time necessary to execute the whole job
      "BEST_EXEC_TIME": 101.4,
      "TASKS": [{"MODEL_NAME": "audio_det",

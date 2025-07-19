@@ -9,8 +9,6 @@ class ShepherdState:
 
     _batch_counter = 0
     allocation_log = {}
-    task_drop_log = pd.DataFrame(columns=["job_id", "workflow_id", "task_id",
-                                          "drop_time", "arrival_time", "slo", "deadline"])
 
     def __init__(self, worker_groups: list[list], task_type_to_group: dict[tuple[int,int],int]):
         self.worker_groups = worker_groups

@@ -83,8 +83,7 @@ def run_experiment(scheduler_type: int):
     worker_model_histories = worker_model_histories.sort_values(by="start_time")
     worker_model_histories.to_csv(os.path.join(out_path, "model_history_log.csv"))
 
-    if scheduler_type == SHEPHERD:
-        ShepherdState.task_drop_log.to_csv(os.path.join(out_path, "drop_log.csv"))
+    sim.task_drop_log.to_csv(os.path.join(out_path, "drop_log.csv"))
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ class JobArrivalAtScheduler(Event):
         return new_events
     
     def should_abandon_event(self, current_time, kwargs: dict):
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.simulation.task_drop_log
         return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job.id).any()
 
     def to_string(self):
@@ -76,7 +76,7 @@ class TasksArrivalAtScheduler(Event):
     def run(self, current_time):
         # leave out dropped tasks
         self.tasks = [task for task in self.tasks 
-                      if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+                      if not (self.simulation.task_drop_log["job_id"] == task.job_id).any()]
 
         for task in self.tasks:
             # only set if not set already (avoid changing order for preempted tasks)
@@ -87,7 +87,7 @@ class TasksArrivalAtScheduler(Event):
     
     def should_abandon_event(self, current_time, kwargs: dict):
         # NOTE: if only some subset of tasks are dropped, drops in run()
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.simulation.task_drop_log
         return all((drop_log[current_time >= drop_log["drop_time"]]["job_id"] == task.job_id).any() 
                    for task in self.tasks)
 
@@ -140,7 +140,7 @@ class BatchArrivalAtWorker(Event):
 
     def run(self, current_time):
         self.batch.tasks = [task for task in self.batch.tasks 
-                            if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+                            if not (self.simulation.task_drop_log["job_id"] == task.job_id).any()]
         if (not ENABLE_DYNAMIC_MODEL_LOADING and not self.worker.GPU_state.does_have_idle_copy(self.batch.model, current_time)) or \
             (not ENABLE_MULTITHREADING and any(s.reserved_batch for s in self.worker.GPU_state.state_at(current_time))) or \
                 self.worker.did_abandon_batch(self.batch.id):
@@ -154,7 +154,7 @@ class BatchArrivalAtWorker(Event):
     
     def should_abandon_event(self, current_time, kwargs: dict):
         # NOTE: if only some subset of tasks are dropped, drops in run()
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.simulation.task_drop_log
         return all((drop_log[current_time >= drop_log["drop_time"]]["job_id"] == task.job_id).any() 
                    for task in self.batch.tasks)
 
@@ -178,7 +178,7 @@ class BatchPreemptionAtWorker(Event):
 
     def run(self, current_time):
         self.batch.tasks = [task for task in self.batch.tasks 
-                            if not (ShepherdState.task_drop_log["job_id"] == task.job_id).any()]
+                            if not (self.simulation.task_drop_log["job_id"] == task.job_id).any()]
 
         # check if batch to be preempted still exists/is actively executing
         if len(self.batch.tasks) > 0 and any(s.reserved_batch and s.reserved_batch.id == self.old_batch_id 
@@ -232,7 +232,7 @@ class JobArrivalAtWorker(Event):
         return new_events
     
     def should_abandon_event(self, current_time, kwargs: dict):
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.simulation.task_drop_log
         return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job.id).any()
 
     def to_string(self):
@@ -257,7 +257,7 @@ class TaskArrival(Event):
         return self.worker.add_task(current_time, self.task)
     
     def should_abandon_event(self, current_time, kwargs: dict):
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.worker.simulation.task_drop_log
         return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.job_id).any()
 
     def to_string(self):
@@ -281,7 +281,7 @@ class InterResultArrival(Event):
         return self.worker.receive_intermediate_result(current_time, self.prev_task, self.cur_task)
 
     def should_abandon_event(self, current_time, kwargs: dict):
-        drop_log = ShepherdState.task_drop_log
+        drop_log = self.worker.simulation.task_drop_log
         return (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == self.cur_task.job_id).any()
 
     def to_string(self):
