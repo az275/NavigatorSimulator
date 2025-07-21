@@ -112,7 +112,8 @@ class BatchRejectionAtWorker(Event):
 
     def run(self, current_time):
         # assert self.simulation.state.worker_states[self.worker.worker_id].id == self.batch.id
-        self.simulation.state.worker_rejected_batch(self.worker.worker_id, self.batch, self.current_worker_batch)
+        if self.simulation.simulation_name == "shepherd":
+            self.simulation.scheduler.worker_rejected_batch(self.worker.worker_id, self.batch, self.current_worker_batch)
         if self.batch.size() == 0:
             return [] # possible if all tasks were dropped
         return [EventOrders(current_time, TasksArrivalAtScheduler(self.simulation, self.batch.tasks))] # reschedule batch
@@ -432,7 +433,7 @@ class AbortAllJobsEvent(Event):
                         
                     #     TasksArrivalAtScheduler(self.simulation, evicted_batch.tasks)))
             
-            assigned_batch = self.simulation.state.worker_states[worker.worker_id]
+            assigned_batch = self.simulation.scheduler.worker_states[worker.worker_id]
             if assigned_batch and not worker.did_abandon_batch(assigned_batch.id):
                 Worker._abandoned_batches.append(assigned_batch.id)
 
@@ -490,6 +491,7 @@ class RerunHerdScheduler(Event):
 
     def run(self, current_time):
         self.simulation.run_herd_scheduler(current_time)
+        self.simulation.scheduler.update_herd_assignment(self.simulation.herd_assignment)
         events = []
         if self.simulation.centralized_scheduler:
             events = self.simulation.schedule_tasks_on_queue(current_time)

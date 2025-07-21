@@ -4,7 +4,7 @@ from workers.taskworker import *
 from workers.worker import *
 from core.network import *
 from core.events import *
-from schedulers.algo.nav_heft_algo import *
+from schedulers.centralized.heft_scheduler import HeftScheduler
 
 
 class HeftTaskWorker(TaskWorker):
@@ -110,6 +110,7 @@ class HeftTaskWorker(TaskWorker):
         return events
 
     #  --------------------------- DECENTRALIZED WORKER SCHEDULING  ----------------------
+    
     def schedule_job_heft(self, current_time, job):
         """ HEFT scheduler to schedule Tasks and send the initial task to worker 
         This implementation so far, assume scheduling thread is different from the execution thread,
@@ -119,7 +120,7 @@ class HeftTaskWorker(TaskWorker):
         task_arrival_events = []  # List to store the TaskArrivalEvent to the receiving Workers
         # 1. compute scheduling decisions based on decentralized HEFT
         # {task_id0->worker_id0, ...}
-        activation_graph = nav_heft_job_plan(job, \
+        activation_graph = HeftScheduler.nav_heft_job_plan(job, \
                                              self.simulation.workers, \
                                              current_time, \
                                              initial_worker_id=self.worker_id, \
@@ -214,7 +215,7 @@ class HeftTaskWorker(TaskWorker):
                 if ENABLE_DYNAMIC_MODEL_LOADING:
                     if ALLOCATION_STRATEGY == "HERD":
                         # don't choose worker that is not in the correct group
-                        while curr_send_batch[0].model and curr_send_batch[0].model.model_id not in self.simulation.state.group_models[self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].group_id] and \
+                        while curr_send_batch[0].model and curr_send_batch[0].model.model_id not in self.simulation.herd_assignment.group_models[self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].group_id] and \
                             self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].total_memory * 10**6 < curr_send_batch[0].model.model_size:
                             self.next_worker_id[curr_send_batch[0].model.model_id] = (self.next_worker_id[curr_send_batch[0].model.model_id] + 1) % len(self.simulation.workers)
                     else:
@@ -240,7 +241,7 @@ class HeftTaskWorker(TaskWorker):
                     cur_task = cur_job.tasks[cur_task_id]
                     assigned_worker_id = task.ADFG[cur_task.task_id]
                     if self.simulation.simulation_name != "hashtask" and self.simulation.dynamic_adjust:
-                        assigned_worker_id = nav_heft_task_adjustment(cur_job, cur_task_id, \
+                        assigned_worker_id = HeftScheduler.nav_heft_task_adjustment(cur_job, cur_task_id, \
                                                                     self.simulation.workers, \
                                                                     current_time, \
                                                                     self.worker_id, \
@@ -366,7 +367,7 @@ class HeftTaskWorker(TaskWorker):
                     return fetch_time
                 elif self.GPU_state._total_memory < task_model.model_size:
                     return np.inf # partition too small
-                elif ALLOCATION_STRATEGY == "HERD" and task_model.model_id not in self.simulation.state.group_models[self.group_id]:
+                elif ALLOCATION_STRATEGY == "HERD" and task_model.model_id not in self.simulation.herd_assignment.group_models[self.group_id]:
                     return np.inf # model ID not in worker's HERD-assigned group
                 else: # not enough space to load right away
                     latest_avail = 0

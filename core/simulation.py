@@ -14,6 +14,7 @@ import pandas as pd
 from workers.heft_task_worker import *
 from workers.shepherd_task_worker import *
 from schedulers.algo.herd_algo import get_herd_assignment
+from schedulers.centralized.shepherd.herd_assignment import HerdAssignment
 
 import gurobipy as gp
 from gurobipy import GRB
@@ -63,7 +64,7 @@ class Simulation(object):
         all_models = [m for ms in list(self.metadata_service.job_type_models.values()) for m in ms]
         return list(filter(lambda m: m.model_id == model_id, all_models))[0]
     
-    def run_herd_scheduler(self, current_time: float):
+    def run_herd_scheduler(self, current_time: float) -> HerdAssignment:
         curr_send_rates = {}
         for jt in self.job_types_list:
             jobs_since_last_sched = [j for j in self.jobs.values() if j.job_type_id == jt and \
@@ -98,14 +99,14 @@ class Simulation(object):
         for (sid, group_id) in stream_groups:
             task_type_assignments[task_types[sid]] = group_id
 
-        self.state = ShepherdState(worker_groups, task_type_assignments)
+        self.herd_assignment = HerdAssignment(worker_groups, task_type_assignments)
 
         if current_time == 0 and ENABLE_MODEL_PREFETCH:
             for worker in self.workers:
                 # randomly choose a model to prefetch
                 group_model_ids = []
                 if self.simulation_name == "shepherd":
-                    group_model_ids = self.state.group_models[worker.group_id]
+                    group_model_ids = self.herd_assignment.group_models[worker.group_id]
                 else:
                     group_model_ids = [get_model_id_for_task_type(tt) for tt in task_types]
 
@@ -247,10 +248,10 @@ class Simulation(object):
                     for model in config[1]:
                         self.metadata_service.add_model_cached_location(model, i, 0)
                         self.workers[-1].GPU_state.prefetch_model(model)
-                if self.simulation_name == "shepherd":
-                    self.state = ShepherdState(
-                        [self.workers],
-                        { tt: 0 for tt in get_task_types(self.job_types_list) })
+                
+                self.herd_assignment = HerdAssignment(
+                    [self.workers],
+                    { tt: 0 for tt in get_task_types(self.job_types_list) })
             self.initialize_external_clients()
 
     def initialize_external_clients(self):

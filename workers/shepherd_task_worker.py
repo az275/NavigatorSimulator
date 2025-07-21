@@ -4,8 +4,6 @@ from workers.worker import *
 from workers.taskworker import *
 from core.network import *
 from core.events import *
-from schedulers.algo.nav_heft_algo import *
-from schedulers.algo.flex_algo import *
 
 import numpy as np
 
@@ -15,8 +13,7 @@ class ShepherdWorker(TaskWorker):
     def free_slot(self, current_time, batch: Batch, task_type):
         """ Attempts to launch another task. """
         events = super().free_slot(current_time, batch, task_type)
-        events += flex_schedule_on_batch_completion(
-            self.simulation, self.simulation.state, self.simulation.model_queues,
+        events += self.simulation.scheduler.flex_schedule_on_batch_completion(
             self, batch, current_time)
         return events
     
