@@ -265,6 +265,33 @@ class TaskArrival(Event):
     
     def is_worker_event():
         return True
+    
+
+# for PER_TASK scheduler
+class TasksArrival(Event):
+    """ Event to signify TASKs arriving at a WORKER. """
+
+    def __init__(self, worker, tasks):
+        self.worker = worker
+        self.tasks = tasks
+
+    def run(self, current_time):
+        # log tracking for this task
+        drop_log = self.worker.simulation.task_drop_log
+        relevant_tasks = [t for t in self.tasks if not (drop_log[current_time >= drop_log["drop_time"]]["job_id"] == t.job_id).any()]
+        for task in relevant_tasks:
+            task.log.set_task_placed_on_worker_queue_timestamp(current_time)
+        return self.worker.add_tasks(current_time, self.tasks)
+    
+    def should_abandon_event(self, current_time, kwargs: dict):
+        drop_log = self.worker.simulation.task_drop_log
+        return all((drop_log[current_time >= drop_log["drop_time"]]["job_id"] == t.job_id).any() for t in self.tasks)
+
+    def to_string(self):
+        return f"[Tasks Arrival (Job {[t.job_id for t in self.tasks]} - Task Types {set([t.task_type for t in self.tasks])}) at {self.worker.worker_id}] ---"
+    
+    def is_worker_event():
+        return True
 
 
 class InterResultArrival(Event):

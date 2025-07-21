@@ -1,12 +1,14 @@
 from core.job import *
 from core.config import *
 import numpy as np
+from core.network import *
 from core.config import *
 
 
 class ExternalClient(object):
 
-    def __init__(self, simulation, job_type=0):
+    def __init__(self, simulation, id, job_type=0):
+        self.id = id
         self.simulation = simulation
         self.job_type = job_type
 
@@ -19,7 +21,7 @@ class ExternalClient(object):
             scale = GAMMA_CV**2 / (1 / send_rate * 1000)
             job_create_delay = np.random.gamma(shape, scale)
         job = Job(create_time=current_time + job_create_delay,
-                  job_type_id=self.job_type, job_id=current_job_id, slo=slo)
+                  job_type_id=self.job_type, job_id=current_job_id, client_id=self.id)
         job = self.log_job_creation_time(job, current_time + job_create_delay)
         return job
 

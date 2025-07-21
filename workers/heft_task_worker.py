@@ -6,8 +6,6 @@ from core.network import *
 from core.events import *
 from schedulers.algo.nav_heft_algo import *
 
-import random
-
 
 class HeftTaskWorker(TaskWorker):
     def __init__(self, simulation, worker_id, total_memory, group_id=-1):
@@ -20,6 +18,7 @@ class HeftTaskWorker(TaskWorker):
         self.max_wait_times = {}
 
         self.next_task_type_idx = 0
+        self.next_worker_id = { mid: 0 for mid in set([get_model_id_for_task_type(tt) for tt in get_task_types(self.simulation.job_types_list) ]) }
 
     def add_task(self, current_time, task):
         """
@@ -41,7 +40,35 @@ class HeftTaskWorker(TaskWorker):
         if (not ENABLE_MULTITHREADING) and any(s.reserved_batch for s in self.GPU_state.state_at(current_time)):
             return []
 
-        return self.check_task_queue(task.task_type, current_time)
+        events = self.check_task_queue(task.task_type, current_time)
+        return events
+    
+    def add_tasks(self, current_time, tasks):
+        """
+        Add tasks into the local task queue
+        """
+        if len(tasks) == 0:
+            return []
+
+        if not ENABLE_DYNAMIC_MODEL_LOADING and tasks[0].model != None and tasks[0].model not in self.GPU_state.placed_models(current_time):
+            print("Static allocation received task that cannot be executed")
+            print(f"Allocated: {self.GPU_state.state_at(current_time)}, Requested ID: {tasks[0].model.model_id}")
+            assert(False)
+
+        # Update when the task is sent to the worker
+        assert (tasks[0].log.task_placed_on_worker_queue_timestamp <= current_time)
+        for task in tasks:
+            self.add_task_to_queue_history(task, current_time) # Update when the task is sent to the worker
+
+        # Initialize max wait time
+        if tasks[0].task_type not in self.max_wait_times or self.max_wait_times[tasks[0].task_type] < 0:
+            self.max_wait_times[tasks[0].task_type] = current_time + task.max_wait_time
+
+        if (not ENABLE_MULTITHREADING) and any(s.reserved_batch for s in self.GPU_state.state_at(current_time)):
+            return []
+
+        events = self.check_task_queue(tasks[0].task_type, current_time)
+        return events
 
     def free_slot(self, current_time, batch: Batch, task_type):
         """ Attempts to launch another task. """
@@ -171,23 +198,59 @@ class HeftTaskWorker(TaskWorker):
         """
         events = []
 
-        for task in batch.tasks:
-            cur_job = self.simulation.jobs[task.job_id]
-            for cur_task_id in task.next_task_ids:
-                cur_task = cur_job.tasks[cur_task_id]
-                assigned_worker_id = task.ADFG[cur_task.task_id]
-                if self.simulation.dynamic_adjust:
-                    assigned_worker_id = nav_heft_task_adjustment(cur_job, cur_task_id, \
-                                                                self.simulation.workers, \
-                                                                current_time, \
-                                                                self.worker_id, \
-                                                                assigned_worker_id)
-                next_worker = self.simulation.workers[assigned_worker_id]
+        if self.simulation.simulation_name == "hashtask":
+            ready_tasks = []
+            for task in batch.tasks:
+                ready_tasks += task.job.newly_available_tasks(task)
+
+            if len(ready_tasks) == 0:
+                return []
+            
+            prev_curr = current_time
+            for i in range(0, len(ready_tasks), 4):
+                curr_send_batch = ready_tasks[i:(i+4)]
+
                 transfer_delay = 0
-                if assigned_worker_id != self.worker_id:  # The next worker on the pipeline is NOT the same node
-                    transfer_delay = GPU_to_GPU_delay(task.result_size)
-                events.append(EventOrders(current_time + transfer_delay, InterResultArrival(
-                    worker=next_worker, prev_task=task, cur_task=cur_task)))
+                if ENABLE_DYNAMIC_MODEL_LOADING:
+                    if ALLOCATION_STRATEGY == "HERD":
+                        # don't choose worker that is not in the correct group
+                        while curr_send_batch[0].model and curr_send_batch[0].model.model_id not in self.simulation.state.group_models[self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].group_id] and \
+                            self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].total_memory * 10**6 < curr_send_batch[0].model.model_size:
+                            self.next_worker_id[curr_send_batch[0].model.model_id] = (self.next_worker_id[curr_send_batch[0].model.model_id] + 1) % len(self.simulation.workers)
+                    else:
+                        while curr_send_batch[0].model and self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].total_memory * 10**6 < curr_send_batch[0].model.model_size:
+                            self.next_worker_id[curr_send_batch[0].model.model_id] = (self.next_worker_id[curr_send_batch[0].model.model_id] + 1) % len(self.simulation.workers)
+                else:
+                    while curr_send_batch[0].model and all(m.model_id != curr_send_batch[0].model.model_id for m in self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]].GPU_state.placed_models(current_time)):
+                        self.next_worker_id[curr_send_batch[0].model.model_id] = (self.next_worker_id[curr_send_batch[0].model.model_id] + 1) % len(self.simulation.workers)
+                
+                if self.next_worker_id[curr_send_batch[0].model.model_id] != self.worker_id:  # The next worker on the pipeline is NOT the same node
+                    transfer_delay = CPU_to_CPU_delay(task.result_size * len(curr_send_batch))
+
+                events.append(EventOrders(prev_curr + transfer_delay, TasksArrival(
+                    self.simulation.workers[self.next_worker_id[curr_send_batch[0].model.model_id]], curr_send_batch)))
+                
+                prev_curr = prev_curr + transfer_delay
+
+                self.next_worker_id[curr_send_batch[0].model.model_id] = (self.next_worker_id[curr_send_batch[0].model.model_id] + 1) % len(self.simulation.workers)
+        else:
+            for task in batch.tasks:
+                cur_job = self.simulation.jobs[task.job_id]
+                for cur_task_id in task.next_task_ids:
+                    cur_task = cur_job.tasks[cur_task_id]
+                    assigned_worker_id = task.ADFG[cur_task.task_id]
+                    if self.simulation.simulation_name != "hashtask" and self.simulation.dynamic_adjust:
+                        assigned_worker_id = nav_heft_task_adjustment(cur_job, cur_task_id, \
+                                                                    self.simulation.workers, \
+                                                                    current_time, \
+                                                                    self.worker_id, \
+                                                                    assigned_worker_id)
+                    next_worker = self.simulation.workers[assigned_worker_id]
+                    transfer_delay = 0
+                    if assigned_worker_id != self.worker_id:  # The next worker on the pipeline is NOT the same node
+                        transfer_delay = CPU_to_CPU_delay(task.result_size)
+                    events.append(EventOrders(current_time + transfer_delay, InterResultArrival(
+                        worker=next_worker, prev_task=task, cur_task=cur_task)))
         return events
 
     def receive_intermediate_result(self, current_time, prev_task, cur_task) -> list:

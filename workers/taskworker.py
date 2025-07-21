@@ -72,6 +72,18 @@ class TaskWorker(Worker):
             and executes the batch [tasks]. Returns a list containing the 
             BatchEndEvent and the batch execution end time.
         """
+        # if self.worker_id == 3:
+        #     print(f"============================= [{current_time}] BEGIN BATCH {batch} ON WORKER 0 =============================")
+
+        #     for task_type in get_task_types(self.simulation.job_types_list):
+        #         if task_type not in self.queue_history:
+        #             print(f"Worker 0 Task Type {task_type} Queue: []")
+        #         else:
+        #             tq = self.get_queue_history(current_time, task_type, info_staleness=0)
+        #             print(f"Worker 0 Task Type {task_type} Queue: {tq}")
+
+        #     print("============================= ============================= ============================= ==================")
+
         self.involved = True
 
         for task in batch.tasks:
@@ -100,7 +112,9 @@ class TaskWorker(Worker):
         batch.front_queue_timestamp = current_time
         batch.execution_start_timestamp = current_time + model_fetch_time
 
-        task_end_time = current_time + model_fetch_time + batch_exec_time
+        task_end_time = current_time + model_fetch_time + batch_exec_time + \
+            SameMachineCPUtoGPU_delay(batch.tasks[0].input_size * batch.size()) + \
+            SameMachineGPUtoCPU_delay(batch.tasks[0].result_size * batch.size())
         task_end_events = []
 
         task_end_events.append(EventOrders(current_time, BatchStartEvent(

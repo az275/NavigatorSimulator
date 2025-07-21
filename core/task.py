@@ -8,7 +8,7 @@ class Task(object):
     def __init__(self, job, job_id, task_id, task_type, task_exec_duration, 
                  required_model, input_size, result_size, max_batch_size, 
                  max_wait_time, batch_sizes, batch_exec_time, mig_batch_exec_time,
-                 exec_time_cv, slo):
+                 exec_time_cv, slo, max_emit_batch_size):
         self.job = job
         self.job_id = job_id                           # id of the job the task belongs to
         self.task_id = task_id                         # id of the task itself
@@ -26,6 +26,7 @@ class Task(object):
         self.batch_exec_time = batch_exec_time
         self.mig_batch_exec_time = mig_batch_exec_time
         self.exec_time_cv = exec_time_cv
+        self.max_emit_batch_size = max_emit_batch_size
         self.slo = slo
         # list of Tasks (inputs) that this task requires ( list will be appended as the job generated)
         self.required_task_ids = []                        # list of task ids
@@ -48,7 +49,7 @@ class Task(object):
         return not (self.__eq__(other))
 
     def __str__(self):
-        return "[JobID: {}, TaskID: {} with GPU duration {}]".format(self.job_id, self.task_id, self.task_exec_duration)
+        return "[JobID: {}, TaskID: {} placed on worker queue @ {}]".format(self.job_id, self.task_id, self.log.task_placed_on_worker_queue_timestamp)
 
     def __repr__(self):
         return self.__str__()

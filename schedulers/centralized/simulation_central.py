@@ -29,6 +29,8 @@ class Simulation_central(Simulation):
 
         self.model_queues = {}      # model id -> list[Task]
 
+        self.next_worker_id = { jt: [0 for tt in get_task_types([jt])] for jt in job_types_list }
+
         self.initialize_workers()
 
     def schedule_job_and_send_tasks(self, job, current_time):
@@ -128,24 +130,23 @@ class Simulation_central(Simulation):
             if ENABLE_DYNAMIC_MODEL_LOADING:
                 if ALLOCATION_STRATEGY == "HERD":
                     # don't choose worker that is not in the correct group
-                    allocated_worker_id = np.random.choice(
-                        [w.worker_id for w in self.workers if task.model == None or (w.total_memory * 10**6 >= task.model.model_size and \
-                                                                                     task.model.model_id in self.state.group_models[w.group_id])])
+                    while task.model and task.model.model_id not in self.state.group_models[self.workers[self.next_worker_id[task.task_type[0]][task.task_id]].group_id] and \
+                        self.workers[self.next_worker_id[task.task_type[0]][task.task_id]].total_memory * 10**6 < task.model.model_size:
+                        self.next_worker_id[task.task_type[0]][task.task_id] = (self.next_worker_id[task.task_type[0]][task.task_id] + 1) % len(self.workers)
                 else:
-                    allocated_worker_id = np.random.choice(
-                        [w.worker_id for w in self.workers if task.model == None or w.total_memory * 10**6 >= task.model.model_size])
+                    while task.model and self.workers[self.next_worker_id[task.task_type[0]][task.task_id]].total_memory * 10**6 < task.model.model_size:
+                        self.next_worker_id[task.task_type[0]][task.task_id] = (self.next_worker_id[task.task_type[0]][task.task_id] + 1) % len(self.workers)
             else:
-                allocated_worker_id = np.random.choice(
-                    [w.worker_id for w in self.workers if task.model == None or any(m.model_id==task.model.model_id 
-                                                                                    for m in w.GPU_state.placed_models(current_time))])
-            activation_graph[task.task_id] = allocated_worker_id
+                while task.model and all(m.model_id != task.model.model_id for m in self.workers[self.next_worker_id[task.task_type[0]][task.task_id]].GPU_state.placed_models(current_time)):
+                    self.next_worker_id[task.task_type[0]][task.task_id] = (self.next_worker_id[task.task_type[0]][task.task_id] + 1) % len(self.workers)
+            activation_graph[task.task_id] = self.next_worker_id[task.task_type[0]][task.task_id]
+            self.next_worker_id[task.task_type[0]][task.task_id] = (self.next_worker_id[task.task_type[0]][task.task_id] + 1) % len(self.workers)
         job.assign_ADFG(activation_graph)
 
         # 2. send the first task to allocated worker
         initial_tasks = [task for task in job.tasks if len(task.required_task_ids) == 0]
         for initial_task in initial_tasks:
-            task_arrival_time = current_time + \
-                CPU_to_CPU_delay(initial_task.input_size)
+            task_arrival_time = current_time + CPU_to_CPU_delay(initial_task.input_size)
             worker_index = activation_graph[initial_task.task_id]
             task_arrival_events.append(EventOrders(
                 task_arrival_time, TaskArrival(self.workers[worker_index], initial_task, job.id)))

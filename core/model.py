@@ -60,6 +60,8 @@ class Model:
         )
     
     def get_exec_time(self, batch_size: int, partition_size: int) -> float:
+        if batch_size in self.batch_sizes:
+            return self.batch_exec_times[partition_size][self.batch_sizes.index(batch_size)]
         m = self.exec_time_constants[partition_size][0]
         b = self.exec_time_constants[partition_size][1]
         return m * batch_size + b

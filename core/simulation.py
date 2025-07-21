@@ -256,7 +256,7 @@ class Simulation(object):
     def initialize_external_clients(self):
         for job_type_id in self.job_types_list:
             self.external_clients.append(
-                ExternalClient(self, job_type=job_type_id))
+                ExternalClient(self, 0, job_type=job_type_id))
     
     def send_rate_at(self, workflow: int, time: float) -> float:
         if time == 0:

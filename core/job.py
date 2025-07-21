@@ -6,11 +6,12 @@ from core.config import *
 
 class Job(object):
 
-    def __init__(self, create_time, job_type_id, job_id, slo):
+    def __init__(self, create_time, job_type_id, job_id, client_id):
         """
         A job is a unique object across the simulation execution that has a specific graph of task dependencies (job_type_id)
         """
 
+        self.client_id = client_id
         self.id = job_id  # unique ID for each job
         self.job_type_id = job_type_id
         self.job_name, self.tasks = None, []  # List of Task objects
@@ -22,7 +23,7 @@ class Job(object):
         self.completed_tasks = []
         self.create_time = create_time  
         self.end_time = create_time
-        self.slo = slo
+        self.slo = np.inf # if SLO_GRANULARITY == "TASK" else SLOS_BY_CLIENT[self.client_id][self.job_type_id]
 
 
     def __hash__(self):
@@ -96,7 +97,9 @@ class Job(object):
                                 task_cfg["BATCH_EXEC_TIME"],
                                 task_cfg["MIG_BATCH_EXEC_TIMES"],
                                 task_cfg["EXEC_TIME_COEFFICIENT_OF_VARIATION"],
-                                task_cfg["SLO"])
+                                SLOS_BY_CLIENT[self.client_id][self.job_type_id][task_cfg["TASK_INDEX"]]
+                                if SLO_GRANULARITY == "TASK" else np.inf,
+                                task_cfg["MAX_EMIT_BATCH_SIZE"])
 
             self.tasks.append(current_task)
 
