@@ -7,6 +7,9 @@ This Repository contains the Simulation code to run Navigator on Customized work
 ##  Run simulation
 ### 1. set environment variable at the terminal 
 #### * For Unix/Linux
+
+`source set_env.sh` OR
+
 export SIMULATION_DIR=/path/to/simulation/directory
 export PYTHONPATH="${PYTHONPATH}:{SIMULATION_DIR}"
 #### * For Windows
